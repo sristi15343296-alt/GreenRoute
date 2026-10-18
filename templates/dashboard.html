@@ -1,0 +1,421 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GreenRoute | Dashboard</title>
+    <link rel="stylesheet"
+        href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+
+<div class="app-layout">
+
+    <aside class="sidebar">
+        <div class="brand">
+            <span class="brand-icon">✚</span>
+            <span>GreenRoute</span>
+        </div>
+
+        <p class="nav-heading">WORKSPACE</p>
+        <a href="#" class="nav-link active">▦ Dashboard</a>
+        <a href="#trip-form" class="nav-link">🚑 Ambulance Trips</a>
+        <a href="#map-section" class="nav-link">⌖ Route Map</a>
+        <a href="#alerts-section" class="nav-link">♧ Traffic Alerts</a>
+
+        <div class="sidebar-bottom">
+            <div class="profile-avatar">GR</div>
+            <div>
+                <strong>Demo Operator</strong>
+                <small>Ambulance Staff</small>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main-content">
+
+        <header class="topbar">
+            <div>
+                <p class="eyebrow">EMERGENCY RESPONSE PLATFORM</p>
+                <h1>Dashboard Overview</h1>
+                <p class="subtitle">
+                    Coordinate emergency trips and traffic alerts.
+                </p>
+            </div>
+            <span class="demo-badge">DEMO MODE</span>
+        </header>
+
+        <section class="stats-grid">
+            <article class="stat-card">
+                <span class="stat-icon green">🚑</span>
+                <p>Active Trips</p>
+                <h2 id="active-trips">0</h2>
+                <small>Currently in progress</small>
+            </article>
+
+            <article class="stat-card">
+                <span class="stat-icon blue">⌖</span>
+                <p>Route Junctions</p>
+                <h2 id="junction-count">0</h2>
+                <small>Configured for demo</small>
+            </article>
+
+            <article class="stat-card">
+                <span class="stat-icon orange">♧</span>
+                <p>Pending Alerts</p>
+                <h2 id="pending-alerts">0</h2>
+                <small>Awaiting acknowledgement</small>
+            </article>
+        </section>
+
+        <section class="content-grid">
+
+            <article class="panel trip-panel" id="trip-form">
+                <div class="panel-heading">
+                    <div>
+                        <h2>Start an Emergency Trip</h2>
+                        <p>Create a simulated ambulance journey.</p>
+                    </div>
+                    <span class="panel-icon">🚑</span>
+                </div>
+
+                <form id="emergency-form">
+                    <label for="start-location">Starting Location</label>
+                    <input id="start-location" type="text"
+                        placeholder="e.g. City Centre" required>
+
+                    <label for="destination">Destination Hospital</label>
+                    <input id="destination" type="text"
+                        placeholder="e.g. General Hospital" required>
+
+                    <label for="priority">Emergency Priority</label>
+                    <select id="priority">
+                        <option value="high">High</option>
+                        <option value="critical">Critical</option>
+                        <option value="normal">Normal</option>
+                    </select>
+
+                    <button type="submit" class="primary-button">
+                        + Create Demo Trip
+                    </button>
+                </form>
+                <p id="form-message" class="message" aria-live="polite"></p>
+            </article>
+
+            <article class="panel map-panel" id="map-section">
+                <div class="panel-heading">
+                    <div>
+                        <h2>Route Monitoring</h2>
+                        <p>Map integration is our next milestone.</p>
+                    </div>
+                    <span class="live-indicator">● SIMULATED</span>
+                </div>
+
+                <div class="map-controls">
+    <label for="route-start">Starting location</label>
+    <input id="route-start" type="text"
+           placeholder="e.g. Jalandhar City">
+
+    <label for="route-destination">Destination</label>
+    <input id="route-destination" type="text"
+           placeholder="e.g. Jalandhar Hospital">
+
+    <button type="button" id="show-route" class="primary-button">
+        Show Route
+    </button>
+
+    <p id="route-message" class="message" aria-live="polite"></p>
+</div>
+
+<div id="route-map" role="region" aria-label="Ambulance route map"></div>
+            </article>
+
+        </section>
+
+        <section class="panel alerts-panel" id="alerts-section">
+            <div class="panel-heading">
+                <div>
+                    <h2>Traffic Junction Alerts</h2>
+                    <p>Demo trip notifications and acknowledgement status.</p>
+                </div>
+            </div>
+
+            <div id="trip-list" class="trip-list">
+                <p class="empty-state">No trips created yet.</p>
+            </div>
+        </section>
+
+        <footer>
+            GreenRoute · Student Project · Simulation Only
+        </footer>
+
+    </main>
+</div>
+
+<script>
+    const form = document.getElementById("emergency-form");
+    const tripList = document.getElementById("trip-list");
+    const message = document.getElementById("form-message");
+
+    let trips = [];
+    let nextTripId = 1;
+
+    function updateStats() {
+        document.getElementById("active-trips").textContent =
+            trips.filter(trip => trip.status === "Active").length;
+
+        document.getElementById("junction-count").textContent = "0";
+
+        document.getElementById("pending-alerts").textContent =
+            trips.filter(trip => trip.status === "Active").length;
+    }
+
+    function renderTrips() {
+        tripList.replaceChildren();
+
+        if (trips.length === 0) {
+            const empty = document.createElement("p");
+            empty.className = "empty-state";
+            empty.textContent = "No trips created yet.";
+            tripList.appendChild(empty);
+            return;
+        }
+
+        trips.forEach(trip => {
+            const card = document.createElement("div");
+            card.className = "trip-row";
+
+            const details = document.createElement("div");
+            details.className = "trip-details";
+
+            const title = document.createElement("strong");
+            title.textContent = `AMB-${trip.id} · ${trip.start}`;
+
+            const description = document.createElement("p");
+            description.textContent =
+                `Destination: ${trip.destination} · Priority: ${trip.priority}`;
+
+            const status = document.createElement("span");
+            status.className = "trip-status";
+            status.textContent = trip.status;
+
+            const button = document.createElement("button");
+            button.className = "secondary-button";
+            button.textContent =
+                trip.status === "Active" ? "Complete Demo Trip" : "Completed";
+            button.disabled = trip.status !== "Active";
+
+            button.addEventListener("click", () => {
+                trip.status = "Completed";
+                renderTrips();
+                updateStats();
+            });
+
+            details.append(title, description);
+            card.append(details, status, button);
+            tripList.appendChild(card);
+        });
+    }
+
+    form.addEventListener("submit", function(event) {
+        event.preventDefault();
+
+        const start = document.getElementById("start-location").value.trim();
+        const destination =
+            document.getElementById("destination").value.trim();
+        const priority = document.getElementById("priority").value;
+
+        if (!start || !destination) {
+            message.textContent = "Please fill in both locations.";
+            return;
+        }
+
+        if (start.toLowerCase() === destination.toLowerCase()) {
+            message.textContent =
+                "Starting location and destination must be different.";
+            return;
+        }
+
+        trips.unshift({
+            id: nextTripId++,
+            start,
+            destination,
+            priority,
+            status: "Active"
+        });
+
+        message.textContent =
+            "Demo trip created successfully. No real alert was sent.";
+
+        form.reset();
+        renderTrips();
+        updateStats();
+    });
+
+    updateStats();
+
+
+const routeMessage = document.getElementById("route-message");
+
+const routeMap = L.map("route-map").setView([31.326, 75.576], 12);
+
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19
+}).addTo(routeMap);
+
+let routeLayer = null;
+let junctionLayer = L.layerGroup().addTo(routeMap);
+let ambulanceMarker = null;
+
+async function getCoordinates(place) {
+    const url = new URL("https://nominatim.openstreetmap.org/search");
+
+    url.searchParams.set("q", place);
+    url.searchParams.set("format", "jsonv2");
+    url.searchParams.set("limit", "1");
+
+    const response = await fetch(url);
+
+    if (!response.ok) {
+        throw new Error("Location search is temporarily unavailable.");
+    }
+
+    const results = await response.json();
+
+    if (!results.length) {
+        throw new Error(`Location not found: ${place}`);
+    }
+
+    return [
+        Number(results[0].lat),
+        Number(results[0].lon)
+    ];
+}
+
+async function drawRoute() {
+    const start = document.getElementById("route-start").value.trim();
+    const destination =
+        document.getElementById("route-destination").value.trim();
+
+    if (!start || !destination) {
+        routeMessage.textContent =
+            "Please enter both the starting location and destination.";
+        return;
+    }
+
+    const button = document.getElementById("show-route");
+    button.disabled = true;
+    routeMessage.textContent = "Finding locations and calculating route...";
+
+    try {
+        const startCoords = await getCoordinates(start);
+        const endCoords = await getCoordinates(destination);
+
+        const routeURL =
+            "https://router.project-osrm.org/route/v1/driving/" +
+            `${startCoords[1]},${startCoords[0]};` +
+            `${endCoords[1]},${endCoords[0]}` +
+            "?overview=full&geometries=geojson";
+
+        const response = await fetch(routeURL);
+
+        if (!response.ok) {
+            throw new Error("The routing service could not calculate a route.");
+        }
+
+        const data = await response.json();
+
+        if (data.code !== "Ok" || !data.routes.length) {
+            throw new Error("No driving route was found.");
+        }
+
+        const route = data.routes[0];
+        const coordinates = route.geometry.coordinates.map(
+            point => [point[1], point[0]]
+        );
+
+        if (routeLayer) {
+            routeMap.removeLayer(routeLayer);
+        }
+
+        junctionLayer.clearLayers();
+
+        routeLayer = L.polyline(coordinates, {
+            color: "#168454",
+            weight: 6,
+            opacity: 0.85
+        }).addTo(routeMap);
+
+        L.marker(startCoords)
+            .bindPopup("Starting location")
+            .addTo(junctionLayer);
+
+        L.marker(endCoords)
+            .bindPopup("Destination")
+            .addTo(junctionLayer);
+
+        // Illustrative junction markers along the route.
+        // These are NOT verified traffic-police junctions.
+        const fractions = [0.25, 0.5, 0.75];
+
+        fractions.forEach((fraction, index) => {
+            const position = Math.floor(
+                fraction * (coordinates.length - 1)
+            );
+
+            L.circleMarker(coordinates[position], {
+                radius: 7,
+                color: "#b45309",
+                fillColor: "#fbbf24",
+                fillOpacity: 1
+            })
+            .bindPopup(`Illustrative route point ${index + 1}`)
+            .addTo(junctionLayer);
+        });
+
+        if (ambulanceMarker) {
+            routeMap.removeLayer(ambulanceMarker);
+        }
+
+        ambulanceMarker = L.marker(startCoords)
+            .bindPopup("Simulated ambulance starting position")
+            .addTo(routeMap);
+
+        routeMap.fitBounds(routeLayer.getBounds(), {
+            padding: [25, 25]
+        });
+        setTimeout(() => {
+            routeMap.invalidateSize();
+            routeMap.fitBounds(routeLayer.getBounds(), {
+                padding: [25, 25]
+            });
+        }, 300);
+
+        const distanceKm = (route.distance / 1000).toFixed(1);
+        const durationMin = Math.round(route.duration / 60);
+
+        routeMessage.textContent =
+            `Route calculated: ${distanceKm} km, approximately ` +
+            `${durationMin} minutes under the routing service's estimate. ` +
+            "This is not a live traffic prediction.";
+
+    } catch (error) {
+        routeMessage.textContent = error.message;
+    } finally {
+        button.disabled = false;
+    }
+}
+
+document.getElementById("show-route")
+    .addEventListener("click", drawRoute);
+
+</script>
+
+</body>
+</html>
