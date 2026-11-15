@@ -1,0 +1,230 @@
+{% extends 'base.html' %}
+{% from 'partials/icons.html' import icon with context %}
+
+{% block header_actions %}
+<a class="btn btn-primary" href="{{ url_for('create_response') }}">{{ icon('plus', 15) }}<span>New response</span></a>
+{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/resources.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-container resources-page">
+  <div class="registry-summary">
+    <div class="registry-stat registry-stat--hero">
+      <span class="registry-stat-icon">{{ icon('check', 16) }}</span>
+      <div><strong>{{ vehicles|selectattr('status', 'equalto', 'available')|list|length }}</strong><span>Units available now</span></div>
+    </div>
+    <div class="registry-stat">
+      <span class="registry-stat-icon">{{ icon('truck', 16) }}</span>
+      <div><strong>{{ registry_counts.vehicles }}</strong><span>Registered vehicles</span></div>
+    </div>
+    <div class="registry-stat">
+      <span class="registry-stat-icon">{{ icon('shield', 16) }}</span>
+      <div><strong>{{ registry_counts.on_duty }}</strong><span>Responders on duty</span></div>
+    </div>
+    <div class="registry-stat-note">
+      {{ icon('info', 14) }}
+      <p>Availability is calculated from each resource’s duty status and overlapping scheduled or active responses. Registry changes apply immediately.</p>
+    </div>
+  </div>
+
+  <div class="registry-layout">
+    <section class="panel registry-panel registry-panel--fleet" aria-labelledby="registry-vehicles">
+      <div class="panel-head">
+        <div>
+          <span class="section-kicker">Fleet readiness</span>
+          <h2 id="registry-vehicles">Emergency vehicles</h2>
+          <p>Units that can be assigned to a response.</p>
+        </div>
+        <span class="panel-tag">{{ vehicles|length }} total</span>
+      </div>
+
+      {% if vehicles %}
+      <div class="registry-table-wrap">
+        <table class="data-table registry-table">
+          <thead>
+            <tr><th>Unit</th><th>Type</th><th>Base</th><th>Status</th><th>Unit access</th></tr>
+          </thead>
+          <tbody>
+            {% for vehicle in vehicles %}
+            <tr>
+              <td>
+                <strong class="registry-name">{{ vehicle.call_sign }}</strong>
+                {% if vehicle.registration %}<span class="registry-sub mono">{{ vehicle.registration }}</span>{% endif %}
+              </td>
+              <td><span class="registry-type">{{ vehicle.type_label }}</span></td>
+              <td><span class="registry-sub">{{ vehicle.base_location or '—' }}</span></td>
+              <td>
+                <form class="registry-status-form" method="post" action="{{ url_for('update_resource_vehicle', vehicle_id=vehicle.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <label class="sr-only" for="vehicle-status-{{ vehicle.id }}">Status for {{ vehicle.call_sign }}</label>
+                  <select class="select select--compact" id="vehicle-status-{{ vehicle.id }}" name="status">
+                    {% for key in vehicle_status_order %}
+                    <option value="{{ key }}"{% if vehicle.status == key %} selected{% endif %}>{{ vehicle_statuses[key].label }}</option>
+                    {% endfor %}
+                  </select>
+                  <button class="btn btn-secondary btn-sm" type="submit">Save</button>
+                </form>
+              </td>
+              <td>
+                {% if vehicle.has_token %}
+                <span class="registry-sub">Code active{% if vehicle.token_issued_at %} · issued {{ vehicle.token_issued_at }}{% endif %}</span>
+                {% else %}
+                <span class="registry-sub">No code issued</span>
+                {% endif %}
+                <div class="registry-status-form">
+                  <form method="post" action="{{ url_for('issue_resource_vehicle_token', vehicle_id=vehicle.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button class="btn btn-secondary btn-sm" type="submit">{{ 'Rotate code' if vehicle.has_token else 'Issue code' }}</button>
+                  </form>
+                  {% if vehicle.has_token %}
+                  <form method="post" action="{{ url_for('revoke_resource_vehicle_token', vehicle_id=vehicle.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button class="btn btn-secondary btn-sm" type="submit">Revoke</button>
+                  </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="registry-empty">
+        {{ icon('truck', 20) }}
+        <div><strong>No vehicles registered</strong><span>Add the first unit below to enable vehicle assignment.</span></div>
+      </div>
+      {% endif %}
+
+      <details class="registry-add">
+        <summary>{{ icon('plus', 14) }} Add vehicle</summary>
+        <form class="registry-form" method="post" action="{{ url_for('create_resource_vehicle') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="registry-form-grid">
+            <div class="field">
+              <label for="call_sign">Call sign</label>
+              <input class="input" id="call_sign" name="call_sign" type="text" maxlength="24" placeholder="MEDIC-13" required>
+            </div>
+            <div class="field">
+              <label for="vehicle_type">Vehicle type</label>
+              <select class="select" id="vehicle_type" name="vehicle_type" required>
+                {% for key in vehicle_type_order %}<option value="{{ key }}">{{ vehicle_types[key].label }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="field">
+              <label for="registration">Registration</label>
+              <input class="input" id="registration" name="registration" type="text" maxlength="40" placeholder="MH-01-AB-0000">
+            </div>
+            <div class="field">
+              <label for="vehicle_base">Base location</label>
+              <input class="input" id="vehicle_base" name="base_location" type="text" maxlength="120" placeholder="Station or depot">
+            </div>
+            <div class="field">
+              <label for="vehicle_status">Status</label>
+              <select class="select" id="vehicle_status" name="status">
+                {% for key in vehicle_status_order %}<option value="{{ key }}">{{ vehicle_statuses[key].label }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="field registry-form-wide">
+              <label for="vehicle_notes">Notes</label>
+              <input class="input" id="vehicle_notes" name="notes" type="text" maxlength="300" placeholder="Capability or equipment note">
+            </div>
+          </div>
+          <div class="registry-form-actions">
+            <button class="btn btn-primary" type="submit">{{ icon('plus', 14) }} Add vehicle</button>
+          </div>
+        </form>
+      </details>
+    </section>
+
+    <section class="panel registry-panel registry-panel--crew" aria-labelledby="registry-personnel">
+      <div class="panel-head">
+        <div>
+          <span class="section-kicker">Crew readiness</span>
+          <h2 id="registry-personnel">Response personnel</h2>
+          <p>Responders who can be assigned as crew.</p>
+        </div>
+        <span class="panel-tag">{{ personnel|length }} total</span>
+      </div>
+
+      {% if personnel %}
+      <div class="registry-table-wrap">
+        <table class="data-table registry-table">
+          <thead>
+            <tr><th>Responder</th><th>Role</th><th>Base</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            {% for member in personnel %}
+            <tr>
+              <td>
+                <strong class="registry-name">{{ member.name }}</strong>
+                <span class="registry-sub mono">{{ member.employee_id }}</span>
+              </td>
+              <td><span class="registry-type">{{ member.role_label }}</span></td>
+              <td><span class="registry-sub">{{ member.base_location or '—' }}</span></td>
+              <td>
+                <form class="registry-status-form" method="post" action="{{ url_for('update_resource_personnel', personnel_id=member.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <label class="sr-only" for="personnel-status-{{ member.id }}">Duty status for {{ member.name }}</label>
+                  <select class="select select--compact" id="personnel-status-{{ member.id }}" name="status">
+                    {% for key in personnel_status_order %}
+                    <option value="{{ key }}"{% if member.status == key %} selected{% endif %}>{{ personnel_statuses[key].label }}</option>
+                    {% endfor %}
+                  </select>
+                  <button class="btn btn-secondary btn-sm" type="submit">Save</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="registry-empty">
+        {{ icon('shield', 20) }}
+        <div><strong>No personnel registered</strong><span>Add the first responder below to enable crew assignment.</span></div>
+      </div>
+      {% endif %}
+
+      <details class="registry-add">
+        <summary>{{ icon('plus', 14) }} Add responder</summary>
+        <form class="registry-form" method="post" action="{{ url_for('create_resource_personnel') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="registry-form-grid">
+            <div class="field">
+              <label for="employee_id">Employee ID</label>
+              <input class="input" id="employee_id" name="employee_id" type="text" maxlength="24" placeholder="GR-209" required>
+            </div>
+            <div class="field">
+              <label for="personnel_name">Name</label>
+              <input class="input" id="personnel_name" name="name" type="text" maxlength="80" placeholder="Responder name" required>
+            </div>
+            <div class="field">
+              <label for="personnel_role">Role</label>
+              <select class="select" id="personnel_role" name="role" required>
+                {% for key in personnel_role_order %}<option value="{{ key }}">{{ personnel_roles[key].label }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="field">
+              <label for="personnel_base">Base location</label>
+              <input class="input" id="personnel_base" name="base_location" type="text" maxlength="120" placeholder="Station or depot">
+            </div>
+            <div class="field">
+              <label for="personnel_status">Duty status</label>
+              <select class="select" id="personnel_status" name="status">
+                {% for key in personnel_status_order %}<option value="{{ key }}">{{ personnel_statuses[key].label }}</option>{% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="registry-form-actions">
+            <button class="btn btn-primary" type="submit">{{ icon('plus', 14) }} Add responder</button>
+          </div>
+        </form>
+      </details>
+    </section>
+  </div>
+</div>
+{% endblock %}

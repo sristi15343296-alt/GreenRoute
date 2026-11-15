@@ -1,0 +1,206 @@
+{% extends 'base.html' %}
+{% from 'partials/icons.html' import icon with context %}
+{% from 'partials/macros.html' import status_badge, priority_badge, empty_state %}
+
+{% block page_badge %}<span class="page-badge">{{ total|number }} record{{ '' if total == 1 else 's' }}</span>{% endblock %}
+
+{% block header_actions %}
+<a class="btn btn-secondary" href="{{ url_for('export_trips', q=query, status=status, priority=priority, sort=sort) }}" title="Export the current filtered view as CSV">{{ icon('download', 15) }}<span>Export</span></a>
+<button class="btn btn-secondary" type="button" data-refresh title="Reload register">{{ icon('refresh', 15) }}<span>Refresh</span></button>
+<a class="btn btn-primary" href="{{ url_for('create_response') }}">{{ icon('plus', 15) }}<span>New response</span></a>
+{% endblock %}
+
+{% block content %}
+<div class="page-container">
+  <section class="register" aria-label="Response register">
+    <nav class="tabs" aria-label="Trip status views">
+      <a class="tab{% if status == 'all' %} is-active{% endif %}" href="{{ url_for('trips', status='all', q=query, priority=priority, sort=sort) }}">
+        All trips <span class="tab-count">{{ counts.all }}</span>
+      </a>
+      <a class="tab{% if status == 'scheduled' %} is-active{% endif %}" href="{{ url_for('trips', status='scheduled', q=query, priority=priority, sort=sort) }}">
+        Scheduled <span class="tab-count">{{ counts.scheduled }}</span>
+      </a>
+      <a class="tab{% if status == 'accepted' %} is-active{% endif %}" href="{{ url_for('trips', status='accepted', q=query, priority=priority, sort=sort) }}">
+        Accepted <span class="tab-count">{{ counts.accepted }}</span>
+      </a>
+      <a class="tab{% if status == 'in_transit' %} is-active{% endif %}" href="{{ url_for('trips', status='in_transit', q=query, priority=priority, sort=sort) }}">
+        En route <span class="tab-count">{{ counts.in_transit }}</span>
+      </a>
+      <a class="tab{% if status == 'on_scene' %} is-active{% endif %}" href="{{ url_for('trips', status='on_scene', q=query, priority=priority, sort=sort) }}">
+        On scene <span class="tab-count">{{ counts.on_scene }}</span>
+      </a>
+      <a class="tab{% if status == 'completed' %} is-active{% endif %}" href="{{ url_for('trips', status='completed', q=query, priority=priority, sort=sort) }}">
+        Completed <span class="tab-count">{{ counts.completed }}</span>
+      </a>
+      <a class="tab{% if status == 'cancelled' %} is-active{% endif %}" href="{{ url_for('trips', status='cancelled', q=query, priority=priority, sort=sort) }}">
+        Cancelled <span class="tab-count">{{ counts.cancelled }}</span>
+      </a>
+    </nav>
+
+    <div class="register-toolbar">
+      <form class="filter-form" id="trips-filter-form" method="get" action="{{ url_for('trips') }}">
+        <input type="hidden" name="status" value="{{ status }}">
+        <div class="search-field">
+          {{ icon('search', 15) }}
+          <label class="sr-only" for="trips-search">Search trips</label>
+          <input id="trips-search" type="search" name="q" value="{{ query }}" placeholder="Search reference, origin or destination" autocomplete="off" spellcheck="false" data-search-input>
+          <kbd>/</kbd>
+        </div>
+
+        <div class="select-wrap">
+          <label class="sr-only" for="trips-priority">Filter by priority</label>
+          <select class="select select--compact" id="trips-priority" name="priority" data-auto-submit>
+            <option value="all"{% if priority == 'all' %} selected{% endif %}>All priorities</option>
+            {% for key in priority_order %}
+            <option value="{{ key }}"{% if priority == key %} selected{% endif %}>{{ priority_meta[key].label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="select-wrap">
+          <label class="sr-only" for="trips-sort">Sort trips</label>
+          <select class="select select--compact" id="trips-sort" name="sort" data-auto-submit>
+            <option value="newest"{% if sort == 'newest' %} selected{% endif %}>Newest first</option>
+            <option value="oldest"{% if sort == 'oldest' %} selected{% endif %}>Oldest first</option>
+            <option value="priority"{% if sort == 'priority' %} selected{% endif %}>Priority</option>
+            <option value="distance"{% if sort == 'distance' %} selected{% endif %}>Longest distance</option>
+            <option value="duration"{% if sort == 'duration' %} selected{% endif %}>Longest duration</option>
+          </select>
+        </div>
+
+        <noscript><button class="btn btn-secondary btn-sm" type="submit">Apply</button></noscript>
+
+        {% if filtered %}
+        <a class="reset-link" href="{{ url_for('trips', status='all') }}">{{ icon('refresh', 13) }} Reset</a>
+        {% endif %}
+      </form>
+
+      <div class="toolbar-meta">
+        <span class="mono">
+          {% if total %}{{ (page - 1) * per_page + 1 }}–{{ [total, page * per_page]|min }} of {{ total }}{% else %}0 of 0{% endif %}
+        </span>
+        {% if refresh_interval %}<span class="toolbar-note">Auto-refresh {{ refresh_interval }}s</span>{% endif %}
+      </div>
+    </div>
+
+    <div class="bulk-bar" id="bulk-bar" hidden>
+      <span><strong id="bulk-count">0</strong> selected</span>
+      <div class="bulk-actions">
+        <button class="btn btn-secondary btn-sm" type="button" data-bulk-action="complete">Mark completed</button>
+        <button class="btn btn-secondary btn-sm" type="button" data-bulk-action="cancel">Cancel trips</button>
+        <button class="btn btn-ghost btn-sm" type="button" id="bulk-clear">Clear selection</button>
+      </div>
+    </div>
+
+    {% if trips %}
+    <div class="table-wrap register-table-wrap">
+      <table class="data-table register-table">
+        <thead>
+          <tr>
+            <th scope="col" class="check-cell">
+              <input type="checkbox" id="check-all" aria-label="Select all trips on this page">
+            </th>
+            <th scope="col">Response</th>
+            <th scope="col">Incident → destination</th>
+            <th scope="col">Priority</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="num">Distance</th>
+            <th scope="col" class="num">Est. duration</th>
+            <th scope="col" class="num">Recorded</th>
+            <th scope="col" class="actions-cell"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for trip in trips %}
+          <tr data-row-href="{{ url_for('trip_detail', trip_id=trip.id) }}">
+            <td class="check-cell">
+              <input type="checkbox" value="{{ trip.id }}" data-row-check aria-label="Select {{ trip.reference }}">
+            </td>
+            <td>
+              <a class="mono ref-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">{{ trip.reference }}</a>
+              <small class="cell-sub">{{ trip.created_at|localdate }}</small>
+            </td>
+            <td>
+              <div class="route-cell"><span>{{ trip.origin }}</span>{{ icon('arrow-right', 12) }}<span>{{ trip.destination }}</span></div>
+              <small class="cell-sub">{{ trip.priority|title }} priority</small>
+            </td>
+            <td>{{ priority_badge(trip.priority) }}</td>
+            <td>{{ status_badge(trip.status) }}</td>
+            <td class="num mono">{{ trip.distance_km|distance_number if trip.distance_km is not none else '—' }}<small class="cell-sub">{{ distance_unit }}</small></td>
+            <td class="num mono">{{ trip.duration_min|duration if trip.duration_min is not none else '—' }}</td>
+            <td class="num mono muted">{{ trip.created_at|localdt('%d %b · %H:%M') }}</td>
+            <td class="actions-cell">
+              <button class="icon-btn row-menu-btn" type="button" data-menu-toggle="row-menu-{{ trip.id }}" aria-expanded="false" aria-label="Actions for {{ trip.reference }}">{{ icon('more', 16) }}</button>
+              <div class="menu menu--float" id="row-menu-{{ trip.id }}" role="menu">
+                <a class="menu-item" href="{{ url_for('trip_detail', trip_id=trip.id) }}" role="menuitem">{{ icon('external', 14) }} Open details</a>
+                {% if trip.status == 'scheduled' %}
+                <button class="menu-item" type="button" data-trip-action="start" data-trip-id="{{ trip.id }}" role="menuitem">{{ icon('play', 14) }} Mark en route</button>
+                {% elif trip.status == 'accepted' %}
+                <button class="menu-item" type="button" data-trip-action="depart" data-trip-id="{{ trip.id }}" role="menuitem">{{ icon('navigation', 14) }} Mark en route</button>
+                {% elif trip.status == 'in_transit' %}
+                <button class="menu-item" type="button" data-trip-action="arrive" data-trip-id="{{ trip.id }}" role="menuitem">{{ icon('target', 14) }} Mark on scene</button>
+                {% elif trip.status == 'on_scene' %}
+                <button class="menu-item" type="button" data-trip-action="complete" data-trip-id="{{ trip.id }}" role="menuitem">{{ icon('check-circle', 14) }} Complete response</button>
+                {% endif %}
+                {% if trip.status in ('scheduled', 'accepted', 'in_transit', 'on_scene') %}
+                <button class="menu-item menu-item--danger" type="button" data-trip-action="cancel" data-trip-id="{{ trip.id }}" role="menuitem">{{ icon('x-circle', 14) }} Cancel trip</button>
+                {% endif %}
+                <div class="menu-sep"></div>
+                <button class="menu-item" type="button" data-copy="{{ trip.reference }}" role="menuitem">{{ icon('copy', 14) }} Copy reference</button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="register-foot">
+      <p>Showing <b>{{ trips|length }}</b> of <b>{{ total }}</b> matching trip records</p>
+      {% if pages > 1 %}
+      <nav class="pagination" aria-label="Register pages">
+        {% if page > 1 %}
+        <a class="page-number page-number--arrow" href="{{ url_for('trips', page=page-1, q=query, status=status, priority=priority, sort=sort) }}" aria-label="Previous page">{{ icon('chevron-left', 14) }}</a>
+        {% else %}
+        <span class="page-number page-number--arrow is-disabled" aria-hidden="true">{{ icon('chevron-left', 14) }}</span>
+        {% endif %}
+
+        {% set window_start = [1, page - 2]|max %}
+        {% set window_end = [pages, page + 2]|min %}
+        {% if window_start > 1 %}
+        <a class="page-number" href="{{ url_for('trips', page=1, q=query, status=status, priority=priority, sort=sort) }}">1</a>
+        {% if window_start > 2 %}<span class="page-ellipsis">…</span>{% endif %}
+        {% endif %}
+        {% for number in range(window_start, window_end + 1) %}
+          {% if number == page %}
+          <span class="page-number is-current" aria-current="page">{{ number }}</span>
+          {% else %}
+          <a class="page-number" href="{{ url_for('trips', page=number, q=query, status=status, priority=priority, sort=sort) }}">{{ number }}</a>
+          {% endif %}
+        {% endfor %}
+        {% if window_end < pages %}
+        {% if window_end < pages - 1 %}<span class="page-ellipsis">…</span>{% endif %}
+        <a class="page-number" href="{{ url_for('trips', page=pages, q=query, status=status, priority=priority, sort=sort) }}">{{ pages }}</a>
+        {% endif %}
+
+        {% if page < pages %}
+        <a class="page-number page-number--arrow" href="{{ url_for('trips', page=page+1, q=query, status=status, priority=priority, sort=sort) }}" aria-label="Next page">{{ icon('chevron-right', 14) }}</a>
+        {% else %}
+        <span class="page-number page-number--arrow is-disabled" aria-hidden="true">{{ icon('chevron-right', 14) }}</span>
+        {% endif %}
+      </nav>
+      {% endif %}
+    </div>
+
+    {% elif filtered %}
+    {{ empty_state('search', 'No trips match these filters', 'Try a different reference, route or priority, or clear the active filters to see the full register.', 'Reset filters', url_for('trips', status='all')) }}
+    {% else %}
+    {{ empty_state('trips', 'No responses recorded yet', 'The register stores every emergency response created in this workspace. Create the first response to populate the register, dashboard and analytics.', 'New response', action_href=url_for('create_response')) }}
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/trips.js') }}" defer></script>
+{% endblock %}

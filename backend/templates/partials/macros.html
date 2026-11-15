@@ -1,0 +1,41 @@
+{% macro status_badge(status, extra='') -%}
+{% set labels = {'scheduled': 'Scheduled', 'accepted': 'Accepted', 'in_transit': 'En route', 'on_scene': 'On scene', 'completed': 'Completed', 'cancelled': 'Cancelled'} %}
+<span class="status status--{{ status }}{% if extra %} {{ extra }}{% endif %}"><span class="status-dot" aria-hidden="true"></span>{{ labels.get(status, status|title) }}</span>
+{%- endmacro %}
+
+{% macro priority_badge(priority, extra='') -%}
+{% set labels = {'critical': 'Critical', 'high': 'High', 'normal': 'Normal'} %}
+<span class="priority priority--{{ priority }}{% if extra %} {{ extra }}{% endif %}">{{ labels.get(priority, priority|title) }}</span>
+{%- endmacro %}
+
+{% macro empty_state(icon_name, title, text, action_label=None, action_href=None, action_attr='') -%}
+{% from 'partials/icons.html' import icon %}
+<div class="empty-state">
+  <span class="empty-icon">{{ icon(icon_name, 20) }}</span>
+  <h3>{{ title }}</h3>
+  <p>{{ text }}</p>
+  {% if action_label and action_href %}
+  <a class="btn btn-secondary btn-sm" href="{{ action_href }}">{{ action_label }}</a>
+  {% elif action_label %}
+  <button class="btn btn-secondary btn-sm" type="button" {{ action_attr|safe }}>{{ action_label }}</button>
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro summary_metric(label, value, unit='', note='', delta=None, icon_name=None) -%}
+{% from 'partials/icons.html' import icon %}
+<div class="metric lg">
+  <div class="metric-label">
+    <span>{{ label }}</span>
+    {% if icon_name %}{{ icon(icon_name, 14) }}{% endif %}
+  </div>
+  <div class="metric-value">
+    <span class="mono">{{ value }}</span>
+    {% if unit %}<span class="metric-unit">{{ unit }}</span>{% endif %}
+    {% if delta is not none %}
+    <span class="metric-delta {{ 'is-up' if delta >= 0 else 'is-down' }}">{{ delta|signed_pct }}</span>
+    {% endif %}
+  </div>
+  {% if note %}<p class="metric-note">{{ note }}</p>{% endif %}
+</div>
+{%- endmacro %}

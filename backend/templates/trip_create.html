@@ -1,0 +1,523 @@
+{% extends 'base.html' %}
+{% from 'partials/icons.html' import icon with context %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/create-trip.css') }}">
+{% endblock %}
+
+{% block header_actions %}
+{% if latest_response %}
+<button class="btn btn-secondary" type="button" data-reuse-last title="Copy locations{{ ' and classification' if latest_response.emergency_type else '' }} from {{ latest_response.reference }}">
+  {{ icon('refresh', 15) }}<span>Reuse last response</span>
+</button>
+{% else %}
+<button class="btn btn-secondary" type="button" disabled title="No earlier response is recorded yet">
+  {{ icon('refresh', 15) }}<span>Reuse last response</span>
+</button>
+{% endif %}
+<button class="btn btn-ghost" type="button" data-modal-open="#create-help">{{ icon('info', 15) }}<span>Help</span></button>
+{% endblock %}
+
+{% block body_class %} create-body{% endblock %}
+
+{% block content %}
+<div class="create-page" data-has-errors="{{ '1' if errors else '0' }}" data-draft-key="gr-response-draft-v1">
+  <nav class="create-breadcrumb" aria-label="Breadcrumb">
+    <a href="{{ url_for('trips') }}">Response register</a>
+    <span class="sep" aria-hidden="true">/</span>
+    <span class="current" aria-current="page">New response</span>
+  </nav>
+
+  {% if errors %}
+  <div class="create-error-summary" role="alert">
+    {{ icon('alert', 15) }}
+    <div>
+      <strong>The response was not saved.</strong>
+      <span>Check the highlighted fields and try again. Your entries have been kept.</span>
+    </div>
+  </div>
+  {% endif %}
+  <div class="create-error-summary" id="create-client-error" role="alert" hidden>
+    {{ icon('alert', 15) }}
+    <div><strong>The response was not saved.</strong><span data-client-error-message>Check the form and try again.</span></div>
+  </div>
+
+  <form id="response-create-form" class="create-workspace" method="post" action="{{ url_for('create_response') }}"
+        data-geocoding="{{ '1' if geocoding_enabled else '0' }}" data-distance-unit="{{ distance_unit }}" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="priority" id="response-priority" value="{{ values.priority }}">
+    <input type="hidden" name="emergency_type" id="response-emergency-type" value="{{ values.emergency_type }}">
+    <input type="hidden" name="waypoints" id="response-waypoints" value="{{ values.waypoints|tojson|forceescape }}">
+
+    <div class="create-main">
+      <!-- 01 Emergency information -->
+      <section class="create-section" aria-labelledby="section-emergency">
+        <div class="create-section-head">
+          <div>
+            <h2 class="create-section-title" id="section-emergency"><span class="num">01</span> Emergency information</h2>
+            <p class="create-section-desc">Identify the incident and classify the response before dispatch.</p>
+          </div>
+        </div>
+
+        <div class="create-field-grid">
+          <div class="create-field f-8{% if errors.name %} is-invalid{% endif %}">
+            <label class="create-label" for="response-name">Response name <span class="req" aria-hidden="true">*</span></label>
+            <input class="create-input" id="response-name" name="name" type="text" maxlength="120" required
+                   value="{{ values.name }}" placeholder="e.g. Medical response · Andheri East" autocomplete="off">
+            {% if errors.name %}<span class="create-field-error">{{ errors.name }}</span>{% else %}<span class="create-field-hint">A short label for the dispatch board.</span>{% endif %}
+          </div>
+
+          <div class="create-field f-4">
+            <label class="create-label" for="response-incident-reference">Incident reference <span class="create-hint">Auto-generated</span></label>
+            <input class="create-input mono is-readonly" id="response-incident-reference" type="text" value="Generated on save" readonly
+                   aria-describedby="incident-ref-note">
+            <span class="create-field-hint" id="incident-ref-note">Assigned when the response is saved.</span>
+          </div>
+
+          <div class="create-field f-4{% if errors.emergency_type %} is-invalid{% endif %}">
+            <label class="create-label" id="emergency-type-label">Emergency type <span class="req" aria-hidden="true">*</span></label>
+            <div class="create-dropdown" data-dropdown>
+              <button class="create-trigger" type="button" data-dropdown-trigger aria-haspopup="listbox" aria-expanded="false" aria-labelledby="emergency-type-label">
+                <span class="status-dot status-dot--gray" data-dropdown-dot aria-hidden="true"></span>
+                <span class="create-trigger-label" data-dropdown-label>
+                  {% if values.emergency_type in emergency_meta %}{{ emergency_meta[values.emergency_type].label }}{% else %}Select emergency type{% endif %}
+                </span>
+                <span class="caret" aria-hidden="true">{{ icon('chevron-down', 12) }}</span>
+              </button>
+              <div class="create-dropdown-menu" data-dropdown-menu role="listbox" aria-labelledby="emergency-type-label" hidden>
+                <div class="create-dropdown-search">
+                  <label class="sr-only" for="emergency-type-search">Filter emergency types</label>
+                  <input id="emergency-type-search" type="search" placeholder="Filter types…" autocomplete="off" data-dropdown-search>
+                </div>
+                {% for key in emergency_order %}
+                <button class="create-dropdown-item{% if values.emergency_type == key %} is-selected{% endif %}" type="button"
+                        role="option" aria-selected="{{ 'true' if values.emergency_type == key else 'false' }}"
+                        data-dropdown-value="{{ key }}" data-label="{{ emergency_meta[key].label }}">
+                  <span class="status-dot status-dot--{{ 'red' if key in ('fire', 'collision', 'hazard') else ('amber' if key == 'rescue' else 'green') }}" aria-hidden="true"></span>
+                  <span class="item-main">
+                    <span class="item-title">{{ emergency_meta[key].label }}</span>
+                    <span class="item-sub">{{ key|title }} response assignment</span>
+                  </span>
+                  <span class="item-tag">{{ key|upper }}</span>
+                </button>
+                {% endfor %}
+              </div>
+            </div>
+            {% if errors.emergency_type %}<span class="create-field-error">{{ errors.emergency_type }}</span>{% else %}<span class="create-field-hint">Sets the response classification.</span>{% endif %}
+          </div>
+
+          <div class="create-field f-4{% if errors.priority %} is-invalid{% endif %}">
+            <label class="create-label" id="priority-label">Response priority</label>
+            <div class="create-chips" role="group" aria-labelledby="priority-label" data-chips>
+              {% for key in priority_order %}
+              <button class="create-chip{% if values.priority == key %} is-selected{% endif %}" type="button"
+                      data-chip-value="{{ key }}" aria-pressed="{{ 'true' if values.priority == key else 'false' }}">
+                <span class="status-dot status-dot--{{ 'red' if key == 'critical' else ('amber' if key == 'high' else 'green') }}" aria-hidden="true"></span>
+                {{ priority_meta[key].label }}
+              </button>
+              {% endfor %}
+            </div>
+            {% if errors.priority %}<span class="create-field-error">{{ errors.priority }}</span>{% else %}<span class="create-field-hint">Matches the priority scale used in the register.</span>{% endif %}
+          </div>
+
+          <div class="create-field f-4{% if errors.dispatch_at %} is-invalid{% endif %}">
+            <label class="create-label" for="response-dispatch">Dispatch date &amp; time (UTC) <span class="req" aria-hidden="true">*</span></label>
+            <input class="create-input" id="response-dispatch" name="dispatch_at" type="datetime-local" required
+                   value="{{ values.dispatch_at }}">
+            {% if errors.dispatch_at %}<span class="create-field-error">{{ errors.dispatch_at }}</span>{% else %}<span class="create-field-hint">Enter UTC. The response record shows the workspace timezone.</span>{% endif %}
+          </div>
+
+          <div class="create-field create-location-field f-6{% if errors.origin %} is-invalid{% endif %}">
+            <label class="create-label" for="response-origin">Incident location <span class="req" aria-hidden="true">*</span></label>
+            <div class="create-input-with-icon create-location-control">
+              <span aria-hidden="true">{{ icon('target', 14) }}</span>
+              <input class="create-input" id="response-origin" name="origin" type="text" maxlength="120" required
+                     value="{{ values.origin }}" placeholder="Search a hospital, locality or full address" autocomplete="off" spellcheck="false"
+                     role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false"
+                     aria-controls="origin-location-suggestions" aria-describedby="origin-location-status" data-location="origin">
+              <button class="create-location-clear" type="button" data-location-clear="origin" aria-label="Clear incident location"{% if not values.origin %} hidden{% endif %}>{{ icon('x', 12) }}</button>
+              <div class="create-location-suggest" id="origin-location-suggestions" role="listbox" aria-label="Incident location suggestions" data-location-suggest="origin" hidden></div>
+            </div>
+            <input type="hidden" name="origin_lat" id="response-origin-lat" data-location-lat="origin">
+            <input type="hidden" name="origin_lng" id="response-origin-lng" data-location-lng="origin">
+            <input type="hidden" name="origin_place_id" id="response-origin-place-id" data-location-place-id="origin">
+            {% if errors.origin %}<span class="create-field-error">{{ errors.origin }}</span>{% endif %}
+            <span class="create-field-hint create-location-status" id="origin-location-status" data-location-status="origin" data-state="{{ 'unresolved' if values.origin else 'empty' }}" role="status" aria-live="polite">{{ 'Address not verified. Select a suggestion or calculate the route to store coordinates.' if values.origin else 'Search for a place or enter the address manually.' }}</span>
+          </div>
+
+          <div class="create-field create-location-field f-6{% if errors.destination %} is-invalid{% endif %}">
+            <label class="create-label" for="response-destination">Response destination <span class="req" aria-hidden="true">*</span></label>
+            <div class="create-input-with-icon create-location-control">
+              <span aria-hidden="true">{{ icon('pin', 14) }}</span>
+              <input class="create-input" id="response-destination" name="destination" type="text" maxlength="120" required
+                     value="{{ values.destination }}" placeholder="Search a receiving facility or full address" autocomplete="off" spellcheck="false"
+                     role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false"
+                     aria-controls="destination-location-suggestions" aria-describedby="destination-location-status" data-location="destination">
+              <button class="create-location-clear" type="button" data-location-clear="destination" aria-label="Clear response destination"{% if not values.destination %} hidden{% endif %}>{{ icon('x', 12) }}</button>
+              <div class="create-location-suggest" id="destination-location-suggestions" role="listbox" aria-label="Response destination suggestions" data-location-suggest="destination" hidden></div>
+            </div>
+            <input type="hidden" name="destination_lat" id="response-destination-lat" data-location-lat="destination">
+            <input type="hidden" name="destination_lng" id="response-destination-lng" data-location-lng="destination">
+            <input type="hidden" name="destination_place_id" id="response-destination-place-id" data-location-place-id="destination">
+            {% if errors.destination %}<span class="create-field-error">{{ errors.destination }}</span>{% endif %}
+            <span class="create-field-hint create-location-status" id="destination-location-status" data-location-status="destination" data-state="{{ 'unresolved' if values.destination else 'empty' }}" role="status" aria-live="polite">{{ 'Address not verified. Select a suggestion or calculate the route to store coordinates.' if values.destination else 'Search for a place or enter the address manually.' }}</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 02 Route planning -->
+      <section class="create-section" aria-labelledby="section-route">
+        <div class="create-section-head">
+          <div>
+            <h2 class="create-section-title" id="section-route"><span class="num">02</span> Response route</h2>
+            <p class="create-section-desc">Review the incident-to-destination route and any intermediate stops.</p>
+          </div>
+          <div class="create-section-actions">
+            <button class="create-section-action" type="button" id="calculate-route">{{ icon('refresh', 12) }} Calculate route</button>
+            <button class="create-section-action" type="button" id="fit-route">{{ icon('maximize', 12) }} Fit to route</button>
+          </div>
+        </div>
+
+        <div class="create-route-layout">
+          <div class="create-route-side">
+            <div class="create-route-side-head">
+              <span class="create-route-side-title">Itinerary · <span id="stop-count">2</span> stops</span>
+              <span class="create-route-side-note">A → B</span>
+            </div>
+            <div class="create-route-side-body" id="route-stops">
+              <div class="create-stop" data-stop="origin">
+                <div class="create-stop-rail">
+                  <span class="create-stop-marker origin">A</span>
+                  <span class="create-stop-line"></span>
+                </div>
+                <div class="create-stop-content">
+                  <div class="create-stop-label">Incident location</div>
+                  <div class="create-stop-name" data-origin-name>{{ values.origin or 'Not set' }}</div>
+                  <div class="create-stop-meta">Response starts here</div>
+                </div>
+                <div class="create-stop-actions">
+                  <button class="create-stop-btn" type="button" title="Edit incident location" data-focus-location="origin" aria-label="Edit incident location">{{ icon('pencil', 11) }}</button>
+                </div>
+              </div>
+
+              <div id="intermediate-stops">
+                {% for waypoint in values.waypoints %}
+                <div class="create-stop" data-waypoint>
+                  <div class="create-stop-rail">
+                    <span class="create-stop-marker mid">{{ loop.index }}</span>
+                    <span class="create-stop-line"></span>
+                  </div>
+                  <div class="create-stop-content">
+                    <div class="create-stop-label">Intermediate stop {{ loop.index }}</div>
+                    <input class="create-input create-waypoint-input" type="text" maxlength="120" value="{{ waypoint }}"
+                           placeholder="Intermediate location" aria-label="Intermediate stop {{ loop.index }}">
+                  </div>
+                  <div class="create-stop-actions">
+                    <button class="create-stop-btn" type="button" title="Remove stop" data-waypoint-remove aria-label="Remove stop">{{ icon('x', 11) }}</button>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+
+              <div class="create-stop" data-stop="destination">
+                <div class="create-stop-rail">
+                  <span class="create-stop-marker dest">B</span>
+                </div>
+                <div class="create-stop-content">
+                  <div class="create-stop-label">Response destination</div>
+                  <div class="create-stop-name" data-destination-name>{{ values.destination or 'Not set' }}</div>
+                  <div class="create-stop-meta">Receiving endpoint</div>
+                </div>
+                <div class="create-stop-actions">
+                  <button class="create-stop-btn" type="button" title="Edit response destination" data-focus-location="destination" aria-label="Edit response destination">{{ icon('pencil', 11) }}</button>
+                </div>
+              </div>
+
+              <button class="create-add-stop" type="button" id="add-stop">{{ icon('plus', 13) }} Add intermediate stop</button>
+            </div>
+          </div>
+
+          <div class="create-map-wrap" id="create-map-wrap">
+            <div id="response-map" role="region" aria-label="Response route preview map"
+                 data-lat="{{ map_center.lat }}" data-lng="{{ map_center.lng }}" data-zoom="{{ map_center.zoom }}"></div>
+
+            <div class="create-map-overlay create-map-overlay--tl">
+              <div class="create-map-chip">
+                <div class="create-map-cell">
+                  <span class="lbl">Distance</span>
+                  <span class="val" data-route-distance>—</span>
+                </div>
+                <span class="create-map-sep" aria-hidden="true"></span>
+                <div class="create-map-cell">
+                  <span class="lbl">Drive time</span>
+                  <span class="val" data-route-duration>—</span>
+                </div>
+                <span class="create-map-sep" aria-hidden="true"></span>
+                <div class="create-map-cell">
+                  <span class="lbl">Stops</span>
+                  <span class="val" data-route-stops>2</span>
+                </div>
+              </div>
+              <p class="create-map-status" data-route-status role="status">Enter both locations, then calculate the route.</p>
+            </div>
+
+            <div class="create-map-legend">
+              <span><i class="dot dot--origin"></i> Incident</span>
+              <span><i class="dot dot--mid"></i> Intermediate</span>
+              <span><i class="dot dot--dest"></i> Destination</span>
+            </div>
+
+            <div class="create-map-tools">
+              <button class="create-map-tool" type="button" id="fullscreen-map" title="Toggle fullscreen map" aria-label="Toggle fullscreen map">{{ icon('maximize', 14) }}</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 03 Response resources -->
+      <section class="create-section" aria-labelledby="section-resources">
+        <div class="create-section-head">
+          <div>
+            <h2 class="create-section-title" id="section-resources"><span class="num">03</span> Response resources</h2>
+            <p class="create-section-desc">Assign an available unit and responders. Availability is checked against other scheduled, accepted and active responses for this dispatch window.</p>
+          </div>
+          <a class="create-resource-link" href="{{ url_for('resources') }}">Manage resources</a>
+        </div>
+
+        <div class="create-resource-grid">
+          <div class="create-resource-card">
+            <div class="create-resource-head">
+              <span class="create-resource-title">Emergency vehicle</span>
+              <span class="create-resource-note" data-vehicle-availability>{{ resource_data.available_vehicles }} available</span>
+            </div>
+            {% if resource_data.vehicles %}
+            <div class="create-field{% if errors.vehicle_id %} is-invalid{% endif %}">
+              <label class="create-label" for="response-vehicle">Assigned vehicle</label>
+              <select class="create-input create-select" id="response-vehicle" name="vehicle_id">
+                <option value="">No vehicle assigned</option>
+                {% for vehicle in resource_data.vehicles %}
+                <option value="{{ vehicle.id }}" data-label="{{ vehicle.call_sign }} · {{ vehicle.type_label }}"
+                        {% if values.vehicle_id == vehicle.id %}selected{% endif %}
+                        {% if not vehicle.available %}disabled{% endif %}>
+                  {{ vehicle.call_sign }} · {{ vehicle.type_label }}{% if vehicle.base_location %} · {{ vehicle.base_location }}{% endif %}{% if not vehicle.available %} — {{ vehicle.reason }}{% endif %}
+                </option>
+                {% endfor %}
+              </select>
+              {% if errors.vehicle_id %}<span class="create-field-error">{{ errors.vehicle_id }}</span>{% endif %}
+              <p class="create-resource-detail" data-vehicle-detail>Select an available unit for this response.</p>
+            </div>
+            {% else %}
+            <div class="create-resource-empty">
+              {{ icon('truck', 18) }}
+              <div>
+                <strong>No vehicle records available</strong>
+                <span>Add vehicles to the response registry before assigning a unit.</span>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="create-resource-card">
+            <div class="create-resource-head">
+              <span class="create-resource-title">Response personnel</span>
+              <span class="create-resource-note" data-crew-availability>{{ resource_data.available_personnel }} available</span>
+            </div>
+            {% if resource_data.personnel %}
+            <div class="create-crew-toolbar">
+              <span>Select up to four responders</span>
+              <strong data-crew-count>{{ values.crew_ids|length }} selected</strong>
+            </div>
+            <div class="create-crew-list" data-crew-list>
+              {% for member in resource_data.personnel %}
+              <label class="create-crew-option{% if not member.available %} is-unavailable{% endif %}">
+                <input type="checkbox" name="crew_ids" value="{{ member.id }}"
+                       {% if member.id in values.crew_ids %}checked{% endif %}
+                       {% if not member.available %}disabled{% endif %}>
+                <span class="create-crew-copy">
+                  <strong>{{ member.name }}</strong>
+                  <span>{{ member.role_label }} · {{ member.employee_id }}</span>
+                  {% if not member.available %}<em>{{ member.reason }}</em>{% endif %}
+                </span>
+              </label>
+              {% endfor %}
+            </div>
+            {% if errors.crew_ids %}<span class="create-field-error">{{ errors.crew_ids }}</span>{% endif %}
+            {% else %}
+            <div class="create-resource-empty">
+              {{ icon('shield', 18) }}
+              <div>
+                <strong>No personnel records available</strong>
+                <span>Add responders to the registry before assigning a crew.</span>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+        <p class="create-resource-foot">{{ icon('info', 13) }} Only resources marked available can be assigned. Units on maintenance, off duty, or committed to an overlapping response are disabled.</p>
+      </section>
+
+      <!-- 04 Dispatch coordination -->
+      <section class="create-section" aria-labelledby="section-coordination">
+        <div class="create-section-head">
+          <div>
+            <h2 class="create-section-title" id="section-coordination"><span class="num">04</span> Dispatch coordination</h2>
+            <p class="create-section-desc">Operating state, route estimate and instructions for the responding crew.</p>
+          </div>
+        </div>
+
+        <div class="create-field-grid">
+          <div class="create-field f-4{% if errors.status %} is-invalid{% endif %}">
+            <label class="create-label" for="response-status">Response state</label>
+            <select class="create-input create-select" id="response-status" name="status">
+              <option value="scheduled"{% if values.status == 'scheduled' %} selected{% endif %}>Scheduled — not yet dispatched</option>
+              <option value="in_transit"{% if values.status == 'in_transit' %} selected{% endif %}>En route — response underway</option>
+            </select>
+            <input type="hidden" name="status_explicit" id="status-explicit" value="{{ '1' if values.status_explicit else '0' }}">
+            {% if errors.status %}<span class="create-field-error">{{ errors.status }}</span>{% endif %}
+          </div>
+
+          <div class="create-field f-4">
+            <label class="create-label" for="response-distance">Route distance</label>
+            <input class="create-input mono is-readonly" id="response-distance" type="text" value="—" readonly data-route-distance-field>
+            <input type="hidden" name="distance_km" id="response-distance-value">
+            <span class="create-field-hint">Calculated from the route preview.</span>
+          </div>
+
+          <div class="create-field f-4">
+            <label class="create-label" for="response-duration">Estimated drive time</label>
+            <input class="create-input mono is-readonly" id="response-duration" type="text" value="—" readonly data-route-duration-field>
+            <input type="hidden" name="duration_min" id="response-duration-value">
+            <span class="create-field-hint">Routing-service estimate, not live traffic.</span>
+          </div>
+
+          <div class="create-field f-6">
+            <label class="create-label" for="response-instructions">Operational instructions <span class="create-hint">Shown to dispatch</span></label>
+            <textarea class="create-input create-textarea" id="response-instructions" name="instructions" maxlength="2000"
+                      placeholder="Access route, scene hazards, receiving facility contact, equipment required…">{{ values.instructions }}</textarea>
+          </div>
+
+          <div class="create-field f-6">
+            <label class="create-label" for="response-notes">Additional notes <span class="create-hint">Optional</span></label>
+            <textarea class="create-input create-textarea" id="response-notes" name="notes" maxlength="2000"
+                      placeholder="Anything else the responding crew or dispatcher should know…">{{ values.notes }}</textarea>
+          </div>
+
+          {% if errors.route %}<p class="create-field-error f-12" role="alert">{{ errors.route }}</p>{% endif %}
+          {% if errors.waypoints %}<p class="create-field-error f-12" role="alert">{{ errors.waypoints }}</p>{% endif %}
+        </div>
+      </section>
+    </div>
+
+    <!-- Summary column -->
+    <aside class="create-summary-col" aria-label="Response summary">
+      <div class="create-summary">
+        <div class="create-summary-head">
+          <span class="create-summary-title">{{ icon('shield', 14) }} Response summary</span>
+          <span class="create-live-dot" title="Updates as you edit" aria-hidden="true"></span>
+        </div>
+
+        <div class="create-summary-body">
+          <div class="create-summary-row"><span class="k">Reference</span><span class="v mono">TRP-pending</span></div>
+          <div class="create-summary-row"><span class="k">Incident ref.</span><span class="v mono" data-summary-incident>Generated on save</span></div>
+          <div class="create-summary-row"><span class="k">Response</span><span class="v{% if not values.name %} is-empty{% endif %}" data-summary-name>{{ values.name or 'Not named yet' }}</span></div>
+          <div class="create-summary-row"><span class="k">Type</span><span class="v{% if values.emergency_type not in emergency_meta %} is-empty{% endif %}" data-summary-type>{% if values.emergency_type in emergency_meta %}{{ emergency_meta[values.emergency_type].label }}{% else %}Not selected{% endif %}</span></div>
+          <div class="create-summary-row"><span class="k">Priority</span><span class="v" data-summary-priority>{{ priority_meta[values.priority].label if values.priority in priority_meta else '—' }}</span></div>
+          <div class="create-summary-row"><span class="k">Dispatch</span><span class="v mono" data-summary-dispatch>—</span></div>
+          <div class="create-summary-row"><span class="k">State</span><span class="v" data-summary-status>{{ status_meta[values.status].label if values.status in status_meta else '—' }}</span></div>
+          <div class="create-summary-row"><span class="k">Vehicle</span><span class="v is-empty" data-summary-vehicle>Unassigned</span></div>
+          <div class="create-summary-row"><span class="k">Crew</span><span class="v is-empty" data-summary-crew>Unassigned</span></div>
+        </div>
+
+        <div class="create-summary-route">
+          <div class="create-summary-route-title">Route</div>
+          <div class="create-summary-stop">
+            <span class="bar"><i class="d o"></i><i class="l"></i></span>
+            <span class="n{% if not values.origin %} is-empty{% endif %}" data-summary-origin>{{ values.origin or 'Incident location not set' }}</span>
+          </div>
+          <div data-summary-waypoints>
+            {% for waypoint in values.waypoints %}
+            <div class="create-summary-stop">
+              <span class="bar"><i class="d m"></i><i class="l"></i></span>
+              <span class="n">{{ waypoint }}</span>
+            </div>
+            {% endfor %}
+          </div>
+          <div class="create-summary-stop">
+            <span class="bar"><i class="d d"></i></span>
+            <span class="n{% if not values.destination %} is-empty{% endif %}" data-summary-destination>{{ values.destination or 'Response destination not set' }}</span>
+          </div>
+        </div>
+
+        <div class="create-summary-stats">
+          <div class="create-stat"><span class="sk">Distance</span><span class="sv" data-summary-distance>—</span></div>
+          <div class="create-stat"><span class="sk">Drive time</span><span class="sv" data-summary-duration>—</span></div>
+          <div class="create-stat"><span class="sk">Stops</span><span class="sv" data-summary-stops>2</span></div>
+          <div class="create-stat"><span class="sk">Priority</span><span class="sv" data-summary-priority-stat>{{ priority_meta[values.priority].label if values.priority in priority_meta else '—' }}</span></div>
+        </div>
+
+        <div class="create-summary-foot">
+          <button class="btn btn-primary btn-block" type="submit" data-submit-response>
+            {{ icon('check', 14) }}<span class="btn-label">Create response</span>
+          </button>
+          <button class="btn btn-secondary btn-block" type="button" data-save-draft>{{ icon('save', 14) }} Save draft locally</button>
+          <p class="create-summary-note">Drafts stay in this browser. Creating the response writes it to the register.</p>
+        </div>
+      </div>
+    </aside>
+  </form>
+
+  <div class="create-action-bar">
+    <div class="create-action-info">
+      <span class="create-autosave"><i class="create-autosave-dot" aria-hidden="true"></i><span data-autosave-label>No local draft saved</span></span>
+      <span class="create-action-sep" aria-hidden="true">·</span>
+      <span data-completeness>Required fields are marked with an asterisk</span>
+    </div>
+    <div class="create-action-right">
+      <a class="btn btn-ghost" href="{{ url_for('trips') }}" data-cancel-response>Cancel</a>
+      <button class="btn btn-secondary" type="button" data-save-draft>Save draft</button>
+      <button class="btn btn-primary" type="submit" data-submit-response>
+        {{ icon('check', 14) }}<span class="btn-label">Create response</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script type="application/json" id="last-response-data">{{ latest_response|tojson }}</script>
+{% endblock %}
+
+{% block modals %}
+<div class="modal" id="create-help" role="dialog" aria-modal="true" aria-labelledby="create-help-title" aria-hidden="true">
+  <div class="modal-backdrop" data-modal-close></div>
+  <div class="modal-box modal-box--form">
+    <div class="modal-head">
+      <div>
+        <span class="eyebrow">Dispatch guide</span>
+        <h2 id="create-help-title">Recording an emergency response</h2>
+        <p>Use recorded information only. GreenRoute does not invent units, crew or live positions.</p>
+      </div>
+      <button class="icon-btn" type="button" data-modal-close aria-label="Close help">{{ icon('x', 15) }}</button>
+    </div>
+    <div class="create-help-body">
+      <ol>
+        <li><strong>Identify the incident.</strong> Name the response, choose the emergency type and set the priority used by the register.</li>
+        <li><strong>Set the route.</strong> Enter the incident location and the receiving destination. Add intermediate stops only when they are part of the response.</li>
+        <li><strong>Calculate the route.</strong> Address lookup uses OpenStreetMap and OSRM. If the services are unavailable, the response can still be saved without a route estimate.</li>
+        <li><strong>Review and create.</strong> The reference and incident reference are generated by the server. The record appears immediately in the response register.</li>
+      </ol>
+      <p class="create-help-note">{{ icon('info', 13) }} Vehicle and personnel assignment is unavailable because this workspace has no resource registry. No placeholder resources are used.</p>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" type="button" data-modal-close>Got it</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js" defer></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js" defer></script>
+<script src="{{ url_for('static', filename='js/trip_create.js') }}" defer></script>
+{% endblock %}

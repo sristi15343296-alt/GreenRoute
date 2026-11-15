@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% from 'partials/icons.html' import icon with context %}
+
+{% block page_badge %}<span class="page-badge page-badge--error">{{ error_code }}</span>{% endblock %}
+
+{% block header_actions %}
+<a class="btn btn-secondary" href="{{ url_for('dashboard') }}">{{ icon('arrow-left', 15) }} Overview</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-container">
+  <div class="error-page">
+    <span class="error-code mono">{{ error_code }}</span>
+    <h2>{{ error_title }}</h2>
+    <p>{{ error_message }}</p>
+    <div class="error-actions">
+      <a class="btn btn-primary" href="{{ url_for('dashboard') }}">Back to overview</a>
+      <a class="btn btn-secondary" href="{{ url_for('trips') }}">Open trips register</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

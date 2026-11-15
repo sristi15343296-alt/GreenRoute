@@ -1,0 +1,237 @@
+{% extends 'base.html' %}
+{% from 'partials/icons.html' import icon with context %}
+
+{% block header_actions %}
+<span class="dirty-note" data-dirty-note hidden>Unsaved changes</span>
+<a class="btn btn-secondary" href="{{ url_for('dashboard') }}">Cancel</a>
+<button class="btn btn-primary" type="submit" form="settings-form">{{ icon('save', 15) }}<span>Save changes</span></button>
+{% endblock %}
+
+{% block content %}
+<div class="page-container settings-page">
+  {% if errors %}
+  <div class="alert alert--error" role="alert">
+    {{ icon('alert', 16) }}
+    <div>
+      <strong>Some settings could not be saved</strong>
+      <ul>
+        {% for field, message in errors.items() %}<li>{{ message }}</li>{% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="settings-layout">
+    <nav class="settings-nav" aria-label="Settings sections">
+      <a href="#workspace" class="is-active">Workspace</a>
+      <a href="#operations">Operations</a>
+      <a href="#map">Map &amp; data</a>
+      <a href="#operator">Operator</a>
+      <a href="#system">System</a>
+    </nav>
+
+    <div class="settings-column">
+      <form id="settings-form" class="settings-form" method="post" action="{{ url_for('settings') }}" data-dirty-form>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <section class="settings-section" id="workspace">
+          <div class="settings-section-head">
+            <div>
+              <h2>Workspace</h2>
+              <p>The identity shown in the sidebar and across the workspace.</p>
+            </div>
+            <span class="settings-tag mono">Core</span>
+          </div>
+          <div class="settings-grid settings-grid--2">
+            <div class="field{% if errors.workspace_name %} is-invalid{% endif %}">
+              <label for="workspace_name">Workspace name</label>
+              <input class="input" id="workspace_name" name="workspace_name" type="text" maxlength="60" required value="{{ values.workspace_name }}">
+              <p class="field-hint">Shown in the sidebar and page context.</p>
+              {% if errors.workspace_name %}<p class="field-error">{{ errors.workspace_name }}</p>{% endif %}
+            </div>
+            <div class="field{% if errors.workspace_region %} is-invalid{% endif %}">
+              <label for="workspace_region">Operating region</label>
+              <input class="input" id="workspace_region" name="workspace_region" type="text" maxlength="60" value="{{ values.workspace_region }}">
+              <p class="field-hint">A short region label, e.g. Central Europe.</p>
+              {% if errors.workspace_region %}<p class="field-error">{{ errors.workspace_region }}</p>{% endif %}
+            </div>
+            <div class="field{% if errors.timezone %} is-invalid{% endif %}">
+              <label for="timezone">Display timezone</label>
+              <select class="select" id="timezone" name="timezone">
+                {% for value, label in timezones %}
+                <option value="{{ value }}"{% if values.timezone == value %} selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+              <p class="field-hint">All timestamps are stored in UTC and rendered in this timezone.</p>
+              {% if errors.timezone %}<p class="field-error">{{ errors.timezone }}</p>{% endif %}
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section" id="operations">
+          <div class="settings-section-head">
+            <div>
+              <h2>Operations</h2>
+              <p>Defaults applied when recording and browsing trips.</p>
+            </div>
+          </div>
+          <div class="settings-grid settings-grid--2">
+            <div class="field">
+              <span class="field-label">Distance unit</span>
+              <div class="segmented segmented--radio" role="radiogroup" aria-label="Distance unit">
+                <label><input type="radio" name="distance_unit" value="km"{% if values.distance_unit == 'km' %} checked{% endif %}><span>Kilometres</span></label>
+                <label><input type="radio" name="distance_unit" value="mi"{% if values.distance_unit == 'mi' %} checked{% endif %}><span>Miles</span></label>
+              </div>
+              <p class="field-hint">Displayed across the dashboard, register, map and analytics.</p>
+            </div>
+            <div class="field">
+              <label for="default_priority">Default trip priority</label>
+              <select class="select" id="default_priority" name="default_priority">
+                {% for key in priority_order %}
+                <option value="{{ key }}"{% if values.default_priority == key %} selected{% endif %}>{{ priority_meta[key].label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field">
+              <label for="default_trip_status">New responses begin as</label>
+              <select class="select" id="default_trip_status" name="default_trip_status">
+                <option value="in_transit"{% if values.default_trip_status == 'in_transit' %} selected{% endif %}>En route (start immediately)</option>
+                <option value="scheduled"{% if values.default_trip_status == 'scheduled' %} selected{% endif %}>Scheduled</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="default_register_view">Default register view</label>
+              <select class="select" id="default_register_view" name="default_register_view">
+                <option value="all"{% if values.default_register_view == 'all' %} selected{% endif %}>All trips</option>
+                {% for key in status_order %}
+                <option value="{{ key }}"{% if values.default_register_view == key %} selected{% endif %}>{{ status_meta[key].label }}</option>
+                {% endfor %}
+              </select>
+              <p class="field-hint">Applied when opening the trips register without a status filter.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section" id="map">
+          <div class="settings-section-head">
+            <div>
+              <h2>Map &amp; data</h2>
+              <p>Initial map position, address lookup and refresh behaviour.</p>
+            </div>
+          </div>
+          <div class="settings-grid settings-grid--3">
+            <div class="field{% if errors.map_center_lat %} is-invalid{% endif %}">
+              <label for="map_center_lat">Centre latitude</label>
+              <input class="input mono" id="map_center_lat" name="map_center_lat" type="number" step="0.0001" min="-90" max="90" value="{{ values.map_center_lat }}" required>
+              {% if errors.map_center_lat %}<p class="field-error">{{ errors.map_center_lat }}</p>{% endif %}
+            </div>
+            <div class="field{% if errors.map_center_lng %} is-invalid{% endif %}">
+              <label for="map_center_lng">Centre longitude</label>
+              <input class="input mono" id="map_center_lng" name="map_center_lng" type="number" step="0.0001" min="-180" max="180" value="{{ values.map_center_lng }}" required>
+              {% if errors.map_center_lng %}<p class="field-error">{{ errors.map_center_lng }}</p>{% endif %}
+            </div>
+            <div class="field{% if errors.map_zoom %} is-invalid{% endif %}">
+              <label for="map_zoom">Default zoom</label>
+              <input class="input mono" id="map_zoom" name="map_zoom" type="number" step="1" min="2" max="18" value="{{ values.map_zoom }}" required>
+              {% if errors.map_zoom %}<p class="field-error">{{ errors.map_zoom }}</p>{% endif %}
+            </div>
+          </div>
+
+          <div class="settings-rows">
+            <label class="switch-row">
+              <span class="switch-copy">
+                <strong>Address lookup</strong>
+                <small>Resolve trip addresses through OpenStreetMap Nominatim to record map coordinates. No API key is used.</small>
+              </span>
+              <input class="switch-input" type="checkbox" name="geocoding_enabled" value="1"{% if values.geocoding_enabled == '1' %} checked{% endif %}>
+              <span class="switch" aria-hidden="true"></span>
+            </label>
+
+            <div class="settings-row">
+              <span class="switch-copy">
+                <strong>Auto-refresh interval</strong>
+                <small>Re-read recorded trips on the fleet map and register. This never contacts a vehicle.</small>
+              </span>
+              <div class="settings-row-control">
+                <label class="sr-only" for="refresh_interval">Auto-refresh interval</label>
+                <select class="select select--compact" id="refresh_interval" name="refresh_interval">
+                  {% for value, label in refresh_options %}
+                  <option value="{{ value }}"{% if values.refresh_interval == value %} selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section" id="operator">
+          <div class="settings-section-head">
+            <div>
+              <h2>Operator</h2>
+              <p>The local operator profile shown at the foot of the sidebar.</p>
+            </div>
+            <span class="settings-tag">No sign-in</span>
+          </div>
+          <div class="settings-grid settings-grid--2">
+            <div class="field{% if errors.operator_name %} is-invalid{% endif %}">
+              <label for="operator_name">Display name</label>
+              <input class="input" id="operator_name" name="operator_name" type="text" maxlength="40" value="{{ values.operator_name }}" required>
+              {% if errors.operator_name %}<p class="field-error">{{ errors.operator_name }}</p>{% endif %}
+            </div>
+            <div class="field{% if errors.operator_role %} is-invalid{% endif %}">
+              <label for="operator_role">Role label</label>
+              <input class="input" id="operator_role" name="operator_role" type="text" maxlength="40" value="{{ values.operator_role }}">
+              {% if errors.operator_role %}<p class="field-error">{{ errors.operator_role }}</p>{% endif %}
+            </div>
+          </div>
+          <div class="info-note info-note--inline">
+            {{ icon('info', 15) }}
+            <p>This workspace runs without authentication. The profile is a local display setting, not an access-control account.</p>
+          </div>
+        </section>
+
+        <div class="settings-save-row">
+          <p>Changes apply to every screen immediately after saving.</p>
+          <div>
+            <a class="btn btn-ghost" href="{{ url_for('settings') }}">Discard</a>
+            <button class="btn btn-primary" type="submit">{{ icon('save', 15) }} Save changes</button>
+          </div>
+        </div>
+      </form>
+
+      <section class="settings-section" id="system">
+        <div class="settings-section-head">
+          <div>
+            <h2>System</h2>
+            <p>Stored data and application information. Read-only.</p>
+          </div>
+          <span class="settings-tag mono">SQLite</span>
+        </div>
+
+        <dl class="definition-list">
+          <div><dt>Data store</dt><dd class="mono">instance/greenroute.sqlite</dd></div>
+          <div><dt>Trip records</dt><dd class="mono">{{ counts.trips }}</dd></div>
+          <div><dt>Lifecycle events</dt><dd class="mono">{{ counts.events }}</dd></div>
+          <div><dt>Schema version</dt><dd class="mono">{{ schema_version }}</dd></div>
+          <div><dt>Application</dt><dd class="mono">GreenRoute 1.0 · Flask</dd></div>
+          <div><dt>Telemetry</dt><dd>None connected</dd></div>
+        </dl>
+
+        <div class="settings-danger-zone">
+          <div>
+            <strong>Restore default settings</strong>
+            <p>Reset workspace identity, operator defaults and map settings. Trips and events are not deleted.</p>
+          </div>
+          <form method="post" action="{{ url_for('reset_settings') }}" data-confirm="Restore all workspace settings to their defaults? Trip records and events will be kept.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn btn-secondary btn-danger" type="submit">{{ icon('refresh', 14) }} Restore defaults</button>
+          </form>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/settings.js') }}" defer></script>
+{% endblock %}

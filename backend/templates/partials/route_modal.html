@@ -1,0 +1,35 @@
+{% from 'partials/icons.html' import icon with context %}
+<div class="modal" id="route-modal" role="dialog" aria-modal="true" aria-labelledby="route-modal-title" aria-hidden="true">
+  <div class="modal-backdrop" data-modal-close></div>
+  <div class="modal-box modal-box--form">
+    <div class="modal-head">
+      <div>
+        <span class="eyebrow">Map tool</span>
+        <h2 id="route-modal-title">Route preview</h2>
+        <p>Calculate a driving estimate between two addresses. This does not create a trip or track a vehicle.</p>
+      </div>
+      <button class="icon-btn" type="button" data-modal-close aria-label="Close">{{ icon('x', 15) }}</button>
+    </div>
+
+    <form id="route-preview-form" class="modal-form">
+      <div class="field">
+        <label for="route-origin">From</label>
+        <input class="input" id="route-origin" name="origin" type="text" maxlength="120" required placeholder="e.g. Paris, France" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="route-destination">To</label>
+        <input class="input" id="route-destination" name="destination" type="text" maxlength="120" required placeholder="e.g. Lyon, France" autocomplete="off">
+      </div>
+      <p class="form-hint">{{ icon('info', 13) }} Uses public Nominatim geocoding and OSRM routing. Estimates only, not live traffic.</p>
+      <p class="form-error" data-form-error role="alert" hidden></p>
+      <p class="route-result" id="route-result" role="status" aria-live="polite"></p>
+
+      <div class="modal-actions">
+        <button class="btn btn-secondary" type="button" data-modal-close>Close</button>
+        <button class="btn btn-primary" type="submit" data-submit-label="Calculate route">
+          <span class="btn-label">Calculate route</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

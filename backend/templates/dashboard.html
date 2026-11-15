@@ -1,0 +1,190 @@
+{% extends 'base.html' %}
+{% from 'partials/icons.html' import icon with context %}
+{% from 'partials/macros.html' import status_badge, priority_badge, empty_state, summary_metric %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+{% endblock %}
+
+{% block header_actions %}
+<div class="header-meta">
+  <span class="header-meta-label">Last record</span>
+  <span class="mono">{{ summary.last_recorded_at|localdt('%d %b · %H:%M') if summary.last_recorded_at else 'No records yet' }}</span>
+</div>
+<span class="header-divider" aria-hidden="true"></span>
+<button class="btn btn-secondary" type="button" data-refresh title="Reload recorded data">{{ icon('refresh', 15) }}<span>Refresh</span></button>
+<a class="btn btn-secondary" href="{{ url_for('fleet_map') }}">{{ icon('map', 15) }}<span>Response map</span></a>
+<a class="btn btn-primary" href="{{ url_for('create_response') }}">{{ icon('plus', 15) }}<span>New response</span></a>
+{% endblock %}
+
+{% block content %}
+<div class="page-container">
+  <section class="metric-strip" aria-label="Operational summary">
+    {{ summary_metric('Recorded trips', summary.total|number, note=summary.in_transit|number ~ ' en route · ' ~ summary.accepted|number ~ ' accepted · ' ~ summary.on_scene|number ~ ' on scene', icon_name='hash') }}
+    {{ summary_metric('Completed', summary.completed|number, note=summary.cancelled|number ~ ' cancelled · ' ~ summary.completion_rate|pct ~ ' completion', icon_name='check-circle') }}
+    {{ summary_metric('Open workload', summary.open|number, note='Responses scheduled, accepted, en route or on scene', icon_name='activity') }}
+    {{ summary_metric('Distance logged', summary.distance_km|distance_number, unit=distance_unit, note='Across ' ~ summary.routed_trips|number ~ ' routed trips', icon_name='navigation') }}
+  </section>
+
+  <div class="dash-grid">
+    <div class="dash-main">
+      <section class="panel panel--dispatch" aria-labelledby="active-heading">
+        <div class="panel-head">
+          <div>
+            <span class="section-kicker">Dispatch queue</span>
+            <h2 id="active-heading">Active trips <span class="count-pill">{{ active_trips|length }}</span></h2>
+            <p>Open responses awaiting acceptance, en route or on scene, most recently recorded first.</p>
+          </div>
+          <a class="panel-link" href="{{ url_for('trips') }}">Open register {{ icon('arrow-right', 13) }}</a>
+        </div>
+
+        {% if active_trips %}
+        <ul class="active-list">
+          {% for trip in active_trips %}
+          <li class="active-row">
+            <span class="status-dot status-dot--{{ trip.status }}" aria-hidden="true"></span>
+            <div class="active-route">
+              <div class="active-route-line">
+                <a class="mono ref-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">{{ trip.reference }}</a>
+                {{ status_badge(trip.status) }}
+                {{ priority_badge(trip.priority) }}
+              </div>
+              <div class="active-route-names">
+                <b title="{{ trip.origin }}">{{ trip.origin }}</b>{{ icon('arrow-right', 13, 'route-arrow') }}<b title="{{ trip.destination }}">{{ trip.destination }}</b>
+              </div>
+            </div>
+            <div class="active-meta">
+              <span class="mono">{{ trip.distance_km|distance if trip.distance_km is not none else 'No route data' }}</span>
+              {% if trip.status in ('scheduled', 'accepted') %}
+              <span>Dispatch {{ trip.dispatch_at|localdt('%d %b · %H:%M') if trip.dispatch_at else '—' }}</span>
+              {% else %}
+              <span>Started {{ trip.started_at|localdt('%d %b · %H:%M') if trip.started_at else '—' }}</span>
+              {% endif %}
+            </div>
+            <div class="row-actions">
+              <a class="btn btn-ghost btn-sm" href="{{ url_for('trip_detail', trip_id=trip.id) }}">Open</a>
+              {% if trip.status == 'scheduled' %}
+              <button class="btn btn-secondary btn-sm" type="button" data-trip-action="start" data-trip-id="{{ trip.id }}">En route</button>
+              {% elif trip.status == 'accepted' %}
+              <button class="btn btn-secondary btn-sm" type="button" data-trip-action="depart" data-trip-id="{{ trip.id }}">En route</button>
+              {% elif trip.status == 'in_transit' %}
+              <button class="btn btn-secondary btn-sm" type="button" data-trip-action="arrive" data-trip-id="{{ trip.id }}">On scene</button>
+              {% elif trip.status == 'on_scene' %}
+              <button class="btn btn-secondary btn-sm" type="button" data-trip-action="complete" data-trip-id="{{ trip.id }}">Complete</button>
+              {% endif %}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        {{ empty_state('route', 'No responses in progress', 'Create a response to begin tracking operational workload. Records stay in the register and can be completed from here.', 'New response', action_href=url_for('create_response')) }}
+        {% endif %}
+      </section>
+
+      <section class="panel panel--ledger" aria-labelledby="recent-heading">
+        <div class="panel-head">
+          <div>
+            <span class="section-kicker">Operational ledger</span>
+            <h2 id="recent-heading">Recent trips</h2>
+            <p>The latest records across the workspace.</p>
+          </div>
+          <a class="panel-link" href="{{ url_for('trips') }}">View all {{ icon('arrow-right', 13) }}</a>
+        </div>
+
+        {% if recent_trips %}
+        <div class="table-wrap">
+          <table class="data-table dashboard-ledger">
+            <thead>
+              <tr>
+                <th scope="col">Trip</th>
+                <th scope="col">Route</th>
+                <th scope="col">Priority</th>
+                <th scope="col">Status</th>
+                <th scope="col" class="num">Recorded</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for trip in recent_trips %}
+              <tr data-row-href="{{ url_for('trip_detail', trip_id=trip.id) }}">
+                <td><a class="mono ref-link" href="{{ url_for('trip_detail', trip_id=trip.id) }}">{{ trip.reference }}</a></td>
+                <td>
+                  <div class="route-cell"><span title="{{ trip.origin }}">{{ trip.origin }}</span>{{ icon('arrow-right', 12) }}<span title="{{ trip.destination }}">{{ trip.destination }}</span></div>
+                  <small class="cell-sub">{{ trip.distance_km|distance_number if trip.distance_km is not none else '—' }} {{ distance_unit }}</small>
+                </td>
+                <td>{{ priority_badge(trip.priority) }}</td>
+                <td>{{ status_badge(trip.status) }}</td>
+                <td class="num mono muted">{{ trip.created_at|localdt('%d %b · %H:%M') }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        {{ empty_state('trips', 'The register is empty', 'Recorded responses will appear here with their route, status and distance. Nothing is pre-filled or simulated.', 'New response', action_href=url_for('create_response')) }}
+        {% endif %}
+      </section>
+    </div>
+
+    <aside class="dash-side">
+      {% set located = map_data|selectattr('has_coordinates')|list %}
+      <section class="panel map-preview-panel" aria-labelledby="map-preview-heading">
+        <div class="panel-head panel-head--tight">
+          <div>
+            <span class="section-kicker">Spatial record</span>
+            <h2 id="map-preview-heading">Recorded positions</h2>
+            <p>{{ located|length }} located trip{{ '' if located|length == 1 else 's' }} in the workspace.</p>
+          </div>
+          <a class="panel-link" href="{{ url_for('fleet_map') }}">{{ icon('arrow-up-right', 14) }}</a>
+        </div>
+        {% if located %}
+        <div id="dashboard-map" class="map-preview" role="region" aria-label="Map of recorded trip endpoints"></div>
+        <div class="panel-foot">
+          {{ icon('info', 13) }} Derived from recorded addresses — not live GPS.
+        </div>
+        {% else %}
+        <div class="panel-empty">
+          {{ empty_state('map', 'No recorded coordinates', 'Positions are stored when a trip address is resolved. Open the fleet map to geocode recorded trips.', 'Open fleet map', url_for('fleet_map')) }}
+        </div>
+        {% endif %}
+      </section>
+
+      <section class="panel panel--ledger" aria-labelledby="activity-heading">
+        <div class="panel-head panel-head--tight">
+          <div>
+            <span class="section-kicker">Event stream</span>
+            <h2 id="activity-heading">Recent activity</h2>
+            <p>Lifecycle events from the register.</p>
+          </div>
+        </div>
+        {% if activity %}
+        {% set event_icons = {'created': 'plus', 'accepted': 'check', 'started': 'play', 'departed': 'navigation', 'arrived': 'target', 'completed': 'check-circle', 'cancelled': 'x-circle', 'location': 'pin'} %}
+        <ul class="activity-list">
+          {% for event in activity %}
+          <li class="activity-item">
+            <span class="activity-icon activity-icon--{{ event.kind }}">{{ icon(event_icons.get(event.kind, 'activity'), 13) }}</span>
+            <div class="activity-copy">
+              <span>{{ event.message }}</span>
+              <small><a class="mono" href="{{ url_for('trip_detail', trip_id=event.trip_id) }}">{{ event.reference }}</a> · {{ event.created_at|localdt('%d %b · %H:%M') }}</small>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="panel-empty">
+          {{ empty_state('activity', 'No activity recorded', 'Trip creation and status changes are logged here.') }}
+        </div>
+        {% endif %}
+      </section>
+    </aside>
+  </div>
+</div>
+<script type="application/json" id="dashboard-map-data">{{ map_data|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js" defer></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js" defer></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}" defer></script>
+{% endblock %}

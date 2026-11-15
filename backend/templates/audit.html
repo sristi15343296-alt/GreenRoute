@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% block page_badge %}<span class="reference-pill">{{ entries|length }} entries</span>{% endblock %}
+
+{% block header_actions %}
+<form method="get" action="{{ url_for('admin_users.audit_log') }}" class="control-form" style="display:flex;gap:8px;align-items:center">
+  <label class="field" style="margin:0">
+    <span class="field-label" style="position:absolute;left:-9999px">Response id</span>
+    <input class="input" type="number" name="trip_id" min="1" value="{{ trip_filter or '' }}" placeholder="Response id">
+  </label>
+  <select class="input" name="limit" aria-label="Rows">
+    {% for option in [50, 100, 200, 500] %}
+    <option value="{{ option }}"{% if limit == option %} selected{% endif %}>{{ option }} rows</option>
+    {% endfor %}
+  </select>
+  <button class="btn btn-secondary btn-sm" type="submit">Filter</button>
+  {% if trip_filter %}
+  <a class="btn btn-ghost btn-sm" href="{{ url_for('admin_users.audit_log') }}">Clear</a>
+  {% endif %}
+</form>
+{% endblock %}
+
+{% block content %}
+<div class="panel table-panel">
+  <div class="panel-head">
+    <div>
+      <h2 style="margin:0;font-size:15px">Audit trail</h2>
+      <p class="form-hint" style="margin-top:4px">
+        Append-only: the database refuses updates and deletes on this table.
+        Passwords and tokens are never recorded.
+      </p>
+    </div>
+  </div>
+
+  {% if entries %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>When</th>
+          <th>Action</th>
+          <th>Outcome</th>
+          <th>Actor</th>
+          <th>Response</th>
+          <th>Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in entries %}
+        <tr>
+          <td class="mono" style="white-space:nowrap">{{ entry.at|localdt }}</td>
+          <td class="mono">{{ entry.action }}</td>
+          <td>
+            <span class="mono" style="color:{{ 'var(--state-complete)' if entry.outcome == 'success' else 'var(--state-danger)' }}">{{ entry.outcome }}</span>
+          </td>
+          <td>
+            {% if entry.actor_id %}
+              <span class="mono">#{{ entry.actor_id }}</span>
+              <div class="form-hint">{{ entry.actor_role or '—' }}</div>
+            {% else %}
+              <span class="form-hint">{{ entry.actor_role or 'anonymous' }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if entry.trip_id %}
+            <a class="mono" href="{{ url_for('trip_detail', trip_id=entry.trip_id) }}">#{{ entry.trip_id }}</a>
+            {% else %}—{% endif %}
+          </td>
+          <td class="mono" style="font-size:11.5px;max-width:420px;word-break:break-word">{{ entry.detail_json or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <p class="empty-note">No audit entries yet.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,264 @@
+{% extends 'base.html' %}
+{% from 'partials/icons.html' import icon with context %}
+{% from 'partials/macros.html' import status_badge, priority_badge %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/detail-extra.css') }}">
+{% endblock %}
+
+{% block header_actions %}
+<a class="btn btn-secondary" href="{{ url_for('trips') }}">{{ icon('arrow-left', 15) }}<span>Register</span></a>
+<a class="btn btn-secondary" href="{{ url_for('export_trip', trip_id=trip.id) }}">{{ icon('download', 15) }}<span>Export</span></a>
+{% if trip.status == 'scheduled' %}
+<button class="btn btn-secondary" type="button" data-trip-action="cancel" data-trip-id="{{ trip.id }}">Cancel</button>
+<button class="btn btn-primary" type="button" data-trip-action="start" data-trip-id="{{ trip.id }}">{{ icon('play', 14) }}<span>Mark en route</span></button>
+{% elif trip.status == 'accepted' %}
+<button class="btn btn-secondary" type="button" data-trip-action="cancel" data-trip-id="{{ trip.id }}">Cancel</button>
+<button class="btn btn-primary" type="button" data-trip-action="depart" data-trip-id="{{ trip.id }}">{{ icon('navigation', 14) }}<span>Mark en route</span></button>
+{% elif trip.status == 'in_transit' %}
+<button class="btn btn-secondary" type="button" data-trip-action="cancel" data-trip-id="{{ trip.id }}">Cancel</button>
+<button class="btn btn-primary" type="button" data-trip-action="arrive" data-trip-id="{{ trip.id }}">{{ icon('target', 14) }}<span>Mark on scene</span></button>
+{% elif trip.status == 'on_scene' %}
+<button class="btn btn-secondary" type="button" data-trip-action="cancel" data-trip-id="{{ trip.id }}">Cancel</button>
+<button class="btn btn-primary" type="button" data-trip-action="complete" data-trip-id="{{ trip.id }}">{{ icon('check', 15) }}<span>Complete response</span></button>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="page-container">
+  <nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="{{ url_for('trips') }}">Response register</a>
+    {{ icon('chevron-right', 12) }}
+    <span aria-current="page">{{ trip.reference }}</span>
+  </nav>
+
+  {% if created %}
+  <div class="detail-created-banner" role="status">
+    {{ icon('check-circle', 15) }}
+    <div><strong>Response recorded.</strong> <span>{{ trip.reference }} is now in the register and available for dispatch.</span></div>
+  </div>
+  {% endif %}
+
+  <section class="detail-hero">
+    <div class="detail-route">
+      <div class="detail-endpoint">
+        <span class="detail-label">Incident location</span>
+        <h2>{{ trip.origin }}</h2>
+      </div>
+      <span class="detail-connector" aria-hidden="true">
+        <span class="detail-line"></span>
+        {{ icon('arrow-right', 16) }}
+        <span class="detail-line"></span>
+      </span>
+      <div class="detail-endpoint detail-endpoint--end">
+        <span class="detail-label">Response destination</span>
+        <h2>{{ trip.destination }}</h2>
+      </div>
+    </div>
+    <div class="detail-hero-meta">
+      <div class="detail-tags">
+        <span class="mono reference-pill">{{ trip.reference }}</span>
+        {% if trip['incident_reference'] %}<span class="mono reference-pill">{{ trip['incident_reference'] }}</span>{% endif %}
+        {% if trip['emergency_type'] in emergency_meta %}<span class="priority priority--high">{{ emergency_meta[trip['emergency_type']].label }}</span>{% endif %}
+        {{ status_badge(trip.status) }}
+        {{ priority_badge(trip.priority) }}
+      </div>
+      <div class="detail-stamp">
+        <span class="header-meta-label">Recorded</span>
+        <span class="mono">{{ trip.created_at|localdt('%d %b %Y · %H:%M') }}</span>
+      </div>
+    </div>
+  </section>
+
+  {% set has_coordinates = trip.origin_lat is not none and trip.origin_lng is not none and trip.destination_lat is not none and trip.destination_lng is not none %}
+
+  <div class="detail-grid">
+    <div class="detail-main">
+      {% if trip['incident_reference'] or trip['emergency_type'] or trip['dispatch_at'] %}
+      <section class="panel assignment-panel" aria-labelledby="assignment-heading">
+        <div class="panel-head">
+          <div>
+            <h2 id="assignment-heading">Emergency assignment</h2>
+            <p>Incident classification and dispatch facts captured with this response.</p>
+          </div>
+          <span class="panel-tag">{{ icon('shield', 12) }} Response</span>
+        </div>
+        <div class="assignment-grid">
+          <div><span>Incident reference</span><b class="mono">{{ trip['incident_reference'] or '—' }}</b></div>
+          <div><span>Emergency type</span><b>{{ emergency_meta[trip['emergency_type']].label if trip['emergency_type'] in emergency_meta else '—' }}</b></div>
+          <div><span>Dispatch</span><b class="mono">{{ trip['dispatch_at']|localdt('%d %b %Y · %H:%M') if trip['dispatch_at'] else '—' }}</b></div>
+          <div><span>Response state</span><b>{{ status_meta[trip.status].label if trip.status in status_meta else trip.status }}</b></div>
+        </div>
+        {% if trip_json.waypoints %}
+        <div class="assignment-copy">
+          <span>Intermediate stops</span>
+          <p>{{ trip_json.waypoints|join(' → ') }}</p>
+        </div>
+        {% endif %}
+        {% if trip['instructions'] %}
+        <div class="assignment-copy">
+          <span>Operational instructions</span>
+          <p>{{ trip['instructions'] }}</p>
+        </div>
+        {% endif %}
+        {% if trip['notes'] %}
+        <div class="assignment-copy">
+          <span>Additional notes</span>
+          <p>{{ trip['notes'] }}</p>
+        </div>
+        {% endif %}
+      </section>
+      {% endif %}
+
+      {% if assignment and (assignment.vehicle or assignment.crew) %}
+      <section class="panel assignment-panel" aria-labelledby="assigned-resources-heading">
+        <div class="panel-head">
+          <div>
+            <h2 id="assigned-resources-heading">Assigned resources</h2>
+            <p>Vehicle and responders committed to this response.</p>
+          </div>
+          <span class="panel-tag">{{ icon('truck', 12) }} Assigned</span>
+        </div>
+        <div class="assigned-resources">
+          {% if assignment.vehicle %}
+          <div class="assigned-resource">
+            <span class="assigned-label">Vehicle</span>
+            <strong>{{ assignment.vehicle.call_sign }} · {{ assignment.vehicle.type_label }}</strong>
+            <span>{{ assignment.vehicle.base_location or 'Base not recorded' }}{% if assignment.vehicle.registration %} · {{ assignment.vehicle.registration }}{% endif %}</span>
+          </div>
+          {% endif %}
+          {% if assignment.crew %}
+          <div class="assigned-resource">
+            <span class="assigned-label">Crew · {{ assignment.crew|length }}</span>
+            <ul class="assigned-crew">
+              {% for member in assignment.crew %}
+              <li><strong>{{ member.name }}</strong><span>{{ member.role_label }} · {{ member.employee_id }}</span></li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+        </div>
+      </section>
+      {% endif %}
+
+      <section class="panel detail-map-panel" aria-labelledby="route-record-heading">
+        <div class="panel-head">
+          <div>
+            <span class="section-kicker">Spatial record</span>
+            <h2 id="route-record-heading">Route record</h2>
+            <p>Recorded endpoints and the straight-line link between them.</p>
+          </div>
+          <span class="panel-tag{% if not has_coordinates %} panel-tag--muted{% endif %}" data-route-tag>{% if has_coordinates %}{{ icon('pin', 12) }} Geocoded{% else %}{{ icon('info', 12) }} No coordinates{% endif %}</span>
+        </div>
+
+        <div id="trip-detail-map" class="detail-map" role="region" aria-label="Map of this trip's recorded endpoints"{% if not has_coordinates %} hidden{% endif %}></div>
+        <div class="detail-map-empty" data-map-empty{% if has_coordinates %} hidden{% endif %}>
+          <span class="empty-icon">{{ icon('map', 20) }}</span>
+          <h3>No map coordinates recorded</h3>
+          <p>Coordinates are stored when a trip's addresses are resolved through the public geocoding service. This record was saved without them.</p>
+          <p class="empty-note" data-lookup-status hidden></p>
+          {% if geocoding_enabled %}
+          <button class="btn btn-secondary btn-sm" type="button" data-geocode-trip="{{ trip.id }}">{{ icon('locate', 14) }} Look up addresses</button>
+          {% else %}
+          <button class="btn btn-secondary btn-sm" type="button" disabled>Address lookup disabled</button>
+          <p class="empty-note">Enable address lookup in <a href="{{ url_for('settings') }}#map">Settings</a> to record coordinates.</p>
+          {% endif %}
+        </div>
+
+        <div class="detail-stats">
+          <div><span>Distance</span><b class="mono">{{ trip.distance_km|distance if trip.distance_km is not none else '—' }}</b></div>
+          <div><span>Est. duration</span><b class="mono">{{ trip.duration_min|duration if trip.duration_min is not none else '—' }}</b></div>
+          <div><span>Started</span><b class="mono">{{ trip.started_at|localdt('%d %b · %H:%M') if trip.started_at else '—' }}</b></div>
+          <div><span>Closed</span><b class="mono">{{ (trip.completed_at or trip.cancelled_at)|localdt('%d %b · %H:%M') if (trip.completed_at or trip.cancelled_at) else '—' }}</b></div>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="timeline-heading">
+        <div class="panel-head">
+          <div>
+            <span class="section-kicker">Event history</span>
+            <h2 id="timeline-heading">Lifecycle timeline</h2>
+            <p>Every state change is recorded with a timestamp.</p>
+          </div>
+          <span class="count-pill">{{ events|length }} event{{ '' if events|length == 1 else 's' }}</span>
+        </div>
+        {% if events %}
+        {% set event_icons = {'created': 'plus', 'accepted': 'check', 'started': 'play', 'departed': 'navigation', 'arrived': 'target', 'completed': 'check-circle', 'cancelled': 'x-circle', 'location': 'pin'} %}
+        <ol class="timeline">
+          {% for event in events %}
+          <li class="timeline-item timeline-item--{{ event.kind }}">
+            <span class="timeline-dot">{{ icon(event_icons.get(event.kind, 'activity'), 11) }}</span>
+            <div class="timeline-copy">
+              <div class="timeline-title">
+                <strong>{{ event.kind|replace('_', ' ')|title }}</strong>
+                <time class="mono" datetime="{{ event.created_at }}">{{ event.created_at|localdt('%d %b %Y · %H:%M:%S') }}</time>
+              </div>
+              <p>{{ event.message }}</p>
+            </div>
+          </li>
+          {% endfor %}
+        </ol>
+        {% else %}
+        <p class="muted-note">No lifecycle events recorded for this trip.</p>
+        {% endif %}
+      </section>
+    </div>
+
+    <aside class="detail-side">
+      <section class="panel" aria-labelledby="facts-heading">
+        <div class="panel-head panel-head--tight">
+          <div><h2 id="facts-heading">Trip record</h2></div>
+        </div>
+        <dl class="fact-list">
+          <div><dt>Reference</dt><dd class="mono">{{ trip.reference }}</dd></div>
+          {% if trip['incident_reference'] %}<div><dt>Incident ref.</dt><dd class="mono">{{ trip['incident_reference'] }}</dd></div>{% endif %}
+          <div><dt>Status</dt><dd>{{ status_badge(trip.status) }}</dd></div>
+          <div><dt>Priority</dt><dd>{{ priority_badge(trip.priority) }}</dd></div>
+          <div><dt>Distance</dt><dd class="mono">{{ trip.distance_km|distance if trip.distance_km is not none else '—' }}</dd></div>
+          <div><dt>Estimated duration</dt><dd class="mono">{{ trip.duration_min|duration if trip.duration_min is not none else '—' }}</dd></div>
+          <div><dt>Recorded</dt><dd class="mono">{{ trip.created_at|localdt('%d %b %Y · %H:%M') }}</dd></div>
+          <div><dt>Started</dt><dd class="mono">{{ trip.started_at|localdt('%d %b %Y · %H:%M') if trip.started_at else '—' }}</dd></div>
+          <div><dt>Completed</dt><dd class="mono">{{ trip.completed_at|localdt('%d %b %Y · %H:%M') if trip.completed_at else '—' }}</dd></div>
+          {% if trip.cancelled_at %}<div><dt>Cancelled</dt><dd class="mono">{{ trip.cancelled_at|localdt('%d %b %Y · %H:%M') }}</dd></div>{% endif %}
+        </dl>
+      </section>
+
+      <section class="panel" aria-labelledby="coordinates-heading" data-coordinates-panel>
+        <div class="panel-head panel-head--tight">
+          <div><h2 id="coordinates-heading">Recorded coordinates</h2></div>
+          <button class="icon-btn" type="button" data-coordinate-copy{% if not has_coordinates %} hidden{% endif %} title="Copy origin coordinates" aria-label="Copy origin coordinates">{{ icon('copy', 13) }}</button>
+        </div>
+        <div class="coordinate-block" data-coordinate-block{% if not has_coordinates %} hidden{% endif %}>
+          <div class="coordinate-row">
+            <span class="coordinate-dot coordinate-dot--start"></span>
+            <div><span>Origin</span><b class="mono" data-coordinate-origin>{{ '%.5f, %.5f'|format(trip.origin_lat, trip.origin_lng) if has_coordinates else '—' }}</b></div>
+          </div>
+          <div class="coordinate-row">
+            <span class="coordinate-dot coordinate-dot--end"></span>
+            <div><span>Destination</span><b class="mono" data-coordinate-destination>{{ '%.5f, %.5f'|format(trip.destination_lat, trip.destination_lng) if has_coordinates else '—' }}</b></div>
+          </div>
+        </div>
+        <p class="muted-note" data-coordinate-empty{% if has_coordinates %} hidden{% endif %}>This trip has no stored coordinates. Use address lookup to record its endpoints, or continue without a map.</p>
+        {% if has_coordinates and geocoding_enabled %}
+        <button class="btn btn-secondary btn-sm btn-block" type="button" data-geocode-trip="{{ trip.id }}">{{ icon('refresh', 13) }} Refresh coordinates</button>
+        {% endif %}
+      </section>
+
+      <div class="info-note">
+        {{ icon('info', 15) }}
+        <p><strong>About these positions.</strong> Endpoint coordinates come from address lookup; the vehicle's position comes from the crew app while the response is en route, and is labelled with its age. The drawn route is provider road geometry, not a recorded driven path.</p>
+      </div>
+    </aside>
+  </div>
+</div>
+<script type="application/json" id="trip-detail-data">{{ trip_json|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js" defer></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js" defer></script>
+<script src="{{ url_for('static', filename='js/trip_detail.js') }}" defer></script>
+{% endblock %}

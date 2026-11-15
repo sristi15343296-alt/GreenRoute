@@ -1,0 +1,174 @@
+{% extends 'base.html' %}
+{% from 'partials/icons.html' import icon with context %}
+
+{% block head_extra %}
+<style>
+  .live-overlay { position: absolute; top: 16px; right: 16px; z-index: 640; width: 286px;
+    padding: 12px 14px; border-radius: 12px; background: rgba(18, 22, 20, .92);
+    border: 1px solid rgba(255, 255, 255, .12); backdrop-filter: blur(8px);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, .35); color: var(--text, #f2f5f0); }
+  .live-overlay-head { display: flex; align-items: center; gap: 8px; }
+  .live-overlay-head h2 { font-size: 13px; letter-spacing: .04em; text-transform: uppercase; margin: 0; flex: 1; }
+  .live-pip { width: 8px; height: 8px; border-radius: 50%; background: #6fd08c; box-shadow: 0 0 0 4px rgba(111, 208, 140, .18); }
+  .live-count { font-size: 12px; opacity: .78; }
+  .live-overlay-meta { margin: 6px 0 0; font-size: 11px; opacity: .66; }
+  .live-state.is-warn { color: #e3b04b; }
+  .live-warning { margin: 8px 0 0; font-size: 11.5px; line-height: 1.45; color: #f0c987; }
+  .live-marker-wrap { background: none; border: 0; }
+  .live-marker { position: relative; width: 26px; height: 26px; display: grid; place-items: center; }
+  .live-marker-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--live-color);
+    border: 2px solid rgba(12, 16, 14, .9); box-shadow: 0 0 0 6px color-mix(in srgb, var(--live-color) 24%, transparent); }
+  .live-marker-arrow { position: absolute; top: -7px; left: 50%; margin-left: -4px; width: 0; height: 0;
+    border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 8px solid var(--live-color); }
+  .live-marker.is-stale .live-marker-dot { opacity: .55; box-shadow: 0 0 0 6px rgba(0, 0, 0, .25); }
+  .live-marker.is-stale { filter: grayscale(.35); }
+  .live-marker-label { position: absolute; top: 24px; left: 50%; transform: translateX(-50%);
+    font-size: 10px; padding: 1px 5px; border-radius: 4px; background: rgba(12, 16, 14, .82);
+    color: var(--text, #f2f5f0); white-space: nowrap; }
+  .live-popup { min-width: 210px; font-size: 12px; }
+  .live-popup dt { opacity: .6; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; margin-top: 6px; }
+  .live-popup dd { margin: 1px 0 0; }
+  .live-popup-sub { margin: 2px 0 8px; opacity: .7; }
+  .live-popup-warn { margin: 10px 0 0; font-size: 11.5px; color: #f0c987; }
+  .live-popup button { margin-top: 10px; }
+  @media (max-width: 720px) { .live-overlay { left: 12px; right: 12px; width: auto; top: auto; bottom: 12px; } }
+</style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+{% endblock %}
+
+{% block header_actions %}
+<div class="header-meta">
+  <span class="header-meta-label">Located</span>
+  <span class="mono">{{ located }} / {{ trips|length }} trips</span>
+</div>
+<span class="header-divider" aria-hidden="true"></span>
+<button class="btn btn-secondary" type="button" data-refresh title="Reload recorded trips">{{ icon('refresh', 15) }}<span>Refresh</span></button>
+<a class="btn btn-secondary" href="{{ url_for('trips') }}">{{ icon('trips', 15) }}<span>Register</span></a>
+<a class="btn btn-primary" href="{{ url_for('create_response') }}">{{ icon('plus', 15) }}<span>New response</span></a>
+{% endblock %}
+
+{% block body_class %} map-body{% endblock %}
+
+{% block content %}
+<div class="map-shell" id="map-shell"
+     data-center='{{ map_center|tojson }}'
+     data-geocoding="{{ '1' if geocoding_enabled else '0' }}"
+     data-refresh="{{ refresh_interval }}"
+     data-units="{{ distance_unit }}">
+  <div id="fleet-map" class="map-canvas" role="application" aria-label="Recorded trip map"></div>
+
+  <section class="live-overlay" id="live-overlay" aria-live="polite" data-poll="5000">
+    <div class="live-overlay-head">
+      <span class="live-pip" aria-hidden="true"></span>
+      <h2>Live emergency units</h2>
+      <span class="live-count mono"><span id="live-count">0</span> tracked</span>
+    </div>
+    <p class="live-overlay-meta"><span id="live-state" class="mono live-state">starting…</span></p>
+    <p class="live-warning" id="live-warning" role="status" hidden></p>
+  </section>
+
+  <div class="map-command">
+    <div class="map-command-title">
+      <h2>Recorded network</h2>
+      <p><span class="status-dot status-dot--accepted" aria-hidden="true"></span>{{ nav_counts.open }} open · {{ trips|length }} recorded trips</p>
+    </div>
+    <div class="map-search">
+      {{ icon('search', 15) }}
+      <label class="sr-only" for="map-search">Search recorded trips</label>
+      <input id="map-search" type="search" placeholder="Search reference, origin or destination" autocomplete="off" spellcheck="false">
+      <kbd>/</kbd>
+    </div>
+    <div class="map-command-actions">
+      <button class="btn btn-secondary btn-sm" type="button" data-modal-open="#route-modal">{{ icon('route', 14) }}<span>Route preview</span></button>
+      <button class="btn btn-secondary btn-sm" type="button" id="map-fit">{{ icon('maximize', 14) }}<span>Fit routes</span></button>
+    </div>
+  </div>
+
+  <aside class="map-panel map-list-panel" id="map-list-panel" aria-label="Recorded trips">
+    <div class="map-panel-head">
+      <div>
+        <h3>Trips</h3>
+        <p><span id="map-list-count">0</span> visible · recorded endpoints</p>
+      </div>
+      <button class="icon-btn" type="button" id="map-collapse" title="Collapse trip list" aria-label="Collapse trip list">{{ icon('chevron-left', 15) }}</button>
+    </div>
+    <div class="map-chips" id="map-chips" role="group" aria-label="Filter by status">
+      <button class="map-chip is-on" type="button" data-map-status="all">All <em>{{ trips|length }}</em></button>
+      <button class="map-chip" type="button" data-map-status="scheduled"><i class="chip-dot chip-dot--scheduled"></i>Scheduled <em>{{ counts.scheduled }}</em></button>
+      <button class="map-chip" type="button" data-map-status="accepted"><i class="chip-dot chip-dot--accepted"></i>Accepted <em>{{ counts.accepted }}</em></button>
+      <button class="map-chip" type="button" data-map-status="in_transit"><i class="chip-dot chip-dot--in_transit"></i>En route <em>{{ counts.in_transit }}</em></button>
+      <button class="map-chip" type="button" data-map-status="on_scene"><i class="chip-dot chip-dot--on_scene"></i>On scene <em>{{ counts.on_scene }}</em></button>
+      <button class="map-chip" type="button" data-map-status="completed"><i class="chip-dot chip-dot--completed"></i>Completed <em>{{ counts.completed }}</em></button>
+      <button class="map-chip" type="button" data-map-status="cancelled"><i class="chip-dot chip-dot--cancelled"></i>Cancelled <em>{{ counts.cancelled }}</em></button>
+    </div>
+    <div class="map-trip-list" id="map-trip-list"></div>
+    <div class="map-panel-foot">
+      {{ icon('info', 13) }} Address lookups, not live tracking.
+    </div>
+  </aside>
+
+  <button class="map-expand" type="button" id="map-expand" hidden>{{ icon('chevron-right', 14) }} Trips <span class="mono" id="map-expand-count">0</span></button>
+
+  <aside class="map-panel map-inspector" id="map-inspector" aria-label="Trip inspector" hidden>
+    <div class="map-panel-head map-panel-head--inspector">
+      <div class="inspector-title">
+        <span class="mono inspector-ref" id="inspector-ref">—</span>
+        <span id="inspector-status"></span>
+      </div>
+      <button class="icon-btn" type="button" id="inspector-close" title="Close inspector" aria-label="Close trip inspector">{{ icon('x', 15) }}</button>
+    </div>
+    <div class="inspector-body" id="inspector-body"></div>
+  </aside>
+
+  <div class="map-tools" aria-label="Map controls">
+    <button type="button" id="map-zoom-in" title="Zoom in" aria-label="Zoom in">{{ icon('plus', 16) }}</button>
+    <span class="map-tool-divider" aria-hidden="true"></span>
+    <button type="button" id="map-zoom-out" title="Zoom out" aria-label="Zoom out">{{ icon('minus', 16) }}</button>
+    <span class="map-tool-divider" aria-hidden="true"></span>
+    <button type="button" id="map-layers" title="Map layers" aria-label="Map layers" aria-expanded="false">{{ icon('layers', 16) }}</button>
+    <button type="button" id="map-recenter" title="Recenter map" aria-label="Recenter map">{{ icon('locate', 16) }}</button>
+  </div>
+
+  <div class="map-layers-pop" id="map-layers-pop" hidden>
+    <h4>Map layers</h4>
+    <label class="layer-row"><span>Endpoint lines</span><input type="checkbox" id="layer-routes" checked><span class="switch" aria-hidden="true"></span></label>
+    <label class="layer-row"><span>Trip labels</span><input type="checkbox" id="layer-labels" checked><span class="switch" aria-hidden="true"></span></label>
+    <div class="map-layer-note">Basemap: OpenFreeMap dark. Map data © OpenStreetMap contributors.</div>
+  </div>
+
+  <div class="map-legend" aria-label="Map legend">
+    <span><i class="legend-dot legend-dot--scheduled"></i>Scheduled</span>
+    <span><i class="legend-dot legend-dot--accepted"></i>Accepted</span>
+    <span><i class="legend-dot legend-dot--in_transit"></i>En route</span>
+    <span><i class="legend-dot legend-dot--on_scene"></i>On scene</span>
+    <span><i class="legend-dot legend-dot--completed"></i>Completed</span>
+    <span><i class="legend-dot legend-dot--cancelled"></i>Cancelled</span>
+    <span><i class="legend-line"></i>Recorded endpoint link</span>
+  </div>
+
+  <div class="map-footnote">
+    <span>
+      <span class="system-pulse" aria-hidden="true"></span>
+      {% if refresh_interval %}Refreshing every {{ refresh_interval }}s{% else %}Manual refresh{% endif %}
+    </span>
+    <span>Positions are geocoded from recorded addresses, not live GPS. Lines connect endpoints, not a driven path.</span>
+  </div>
+
+  <noscript><div class="map-noscript">The fleet map needs JavaScript for map rendering. All trip records remain available in the <a href="{{ url_for('trips') }}">trips register</a>.</div></noscript>
+</div>
+
+<script type="application/json" id="fleet-map-data">{{ map_data|tojson }}</script>
+{% endblock %}
+
+{% block modals %}
+{% include 'partials/route_modal.html' %}
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js" defer></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js" defer></script>
+<script src="{{ url_for('static', filename='js/map.js') }}?v=routefix9" defer></script>
+<script src="{{ url_for('static', filename='js/emergency-live.js') }}?v=phasec1" defer></script>
+{% endblock %}

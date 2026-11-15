@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "GreenRoute Driver",
+    "slug": "greenroute-driver",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "scheme": "greenroutedriver",
+    "backgroundColor": "#0b0c0b",
+      "plugins": [
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "GreenRoute shares this vehicle's position with dispatch only while a response is en route.",
+          "isAndroidBackgroundLocationEnabled": false
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": false
+    }
+  }
+}

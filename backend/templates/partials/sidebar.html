@@ -1,0 +1,95 @@
+{# Global application sidebar. Included once by base.html so every screen is identical. #}
+{% from 'partials/icons.html' import icon with context %}
+<aside class="sidebar acrylic" id="app-sidebar" aria-label="Primary navigation">
+  <div class="sidebar-brand-row">
+    <a class="brand" href="{{ url_for('dashboard') }}" aria-label="GreenRoute operations overview">
+      <span class="brand-mark">{{ icon('route', 17) }}</span>
+      <span class="brand-copy">
+        <strong>GreenRoute</strong>
+        <span class="brand-tag">Enterprise</span>
+      </span>
+    </a>
+    <button class="sidebar-close" type="button" data-sidebar-close aria-label="Close navigation">
+      {{ icon('x', 16) }}
+    </button>
+  </div>
+
+  <div class="workspace-switch">
+    <button class="workspace-button" type="button" data-menu-toggle="workspace-menu" aria-expanded="false" aria-haspopup="true">
+      <span class="workspace-dot" aria-hidden="true"></span>
+      <span class="workspace-name">{{ app_settings.workspace_name }}</span>
+      {{ icon('chevrons-up-down', 14) }}
+    </button>
+    <div class="menu workspace-menu" id="workspace-menu" role="menu">
+      <div class="menu-label">Active workspace</div>
+      <div class="workspace-summary">
+        <strong>{{ app_settings.workspace_name }}</strong>
+        <span>{{ app_settings.workspace_region }} · {{ timezone_label }}</span>
+      </div>
+      <div class="menu-sep"></div>
+      <a class="menu-item" href="{{ url_for('settings') }}" role="menuitem">{{ icon('settings', 14) }} Workspace settings</a>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav" aria-label="Workspace sections">
+    <div class="nav-label">Operations</div>
+    <a class="nav-item{% if current_nav == 'dashboard' %} is-active{% endif %}" href="{{ url_for('dashboard') }}"{% if current_nav == 'dashboard' %} aria-current="page"{% endif %}>
+      {{ icon('dashboard', 16) }}<span>Dashboard</span>
+    </a>
+    <a class="nav-item{% if current_nav == 'map' %} is-active{% endif %}" href="{{ url_for('fleet_map') }}"{% if current_nav == 'map' %} aria-current="page"{% endif %}>
+      {{ icon('map', 16) }}<span>Response map</span>
+      {% if nav_counts.in_transit %}<span class="nav-count">{{ nav_counts.in_transit }}</span>{% endif %}
+    </a>
+    <a class="nav-item{% if current_nav == 'trips' %} is-active{% endif %}" href="{{ url_for('trips') }}"{% if current_nav == 'trips' %} aria-current="page"{% endif %}>
+      {{ icon('trips', 16) }}<span>Response register</span>
+    </a>
+    <a class="nav-item{% if current_nav == 'resources' %} is-active{% endif %}" href="{{ url_for('resources') }}"{% if current_nav == 'resources' %} aria-current="page"{% endif %}>
+      {{ icon('truck', 16) }}<span>Response resources</span>
+    </a>
+
+    <div class="nav-label">Intelligence</div>
+    <a class="nav-item{% if current_nav == 'analytics' %} is-active{% endif %}" href="{{ url_for('analytics') }}"{% if current_nav == 'analytics' %} aria-current="page"{% endif %}>
+      {{ icon('analytics', 16) }}<span>Analytics &amp; reports</span>
+    </a>
+
+    <div class="nav-label">System</div>
+    {% if can('settings.manage') %}
+    <a class="nav-item{% if current_nav == 'settings' %} is-active{% endif %}" href="{{ url_for('settings') }}"{% if current_nav == 'settings' %} aria-current="page"{% endif %}>
+      {{ icon('settings', 16) }}<span>Settings</span>
+    </a>
+    {% endif %}
+    {% if can('audit.view') %}
+    <a class="nav-item{% if current_nav == 'audit' %} is-active{% endif %}" href="{{ url_for('admin_users.audit_log') }}"{% if current_nav == 'audit' %} aria-current="page"{% endif %}>
+      {{ icon('shield', 16) }}<span>Audit log</span>
+    </a>
+    {% endif %}
+    {% if can('admins.manage') %}
+    <a class="nav-item{% if current_nav == 'administrators' %} is-active{% endif %}" href="{{ url_for('admin_users.administrators') }}"{% if current_nav == 'administrators' %} aria-current="page"{% endif %}>
+      {{ icon('lock', 16) }}<span>Administrators</span>
+    </a>
+    {% endif %}
+  </nav>
+
+  <div class="sidebar-foot">
+    <div class="system-note">
+      <span class="system-pulse" aria-hidden="true"></span>
+      <div>
+        <strong>Live telemetry</strong>
+        <span>Foreground GPS · 5 s map refresh</span>
+      </div>
+    </div>
+
+    <div class="operator-card">
+      <span class="operator-avatar">{{ initials }}</span>
+      <div class="operator-meta">
+        <strong>{{ current_actor.name if current_actor else app_settings.operator_name }}</strong>
+        <span>{{ current_actor.label if current_actor else app_settings.operator_role }}</span>
+      </div>
+      <form method="post" action="{{ url_for('admin_auth.logout') }}" style="margin:0">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="operator-settings" type="submit" title="Sign out" aria-label="Sign out">{{ icon('x', 15) }}</button>
+      </form>
+    </div>
+  </div>
+</aside>
+<div class="sidebar-scrim" data-sidebar-close aria-hidden="true"></div>

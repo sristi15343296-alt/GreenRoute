@@ -1,0 +1,54 @@
+name: Bug report
+description: Something behaves differently from what the documentation says
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include credentials, unit tokens, database files or real vehicle
+        positions in this report. Replace any coordinates with nearby but fictional
+        ones.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Admin console (pages, exports, settings)
+        - Authentication or roles
+        - Emergency lifecycle or audit
+        - Driver API
+        - Live telemetry or the live map
+        - Crew phone app
+        - Setup or tooling
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happens
+      description: What you did, what you expected, what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start the backend with ...
+        2. Sign in as ...
+        3. Open ...
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Python, Node, Expo SDK, browser or device. Say "not run" if it did not happen.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: Server traceback, browser console text or test output. Remove tokens and coordinates.
+      render: shell

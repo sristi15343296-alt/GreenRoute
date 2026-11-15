@@ -1,0 +1,76 @@
+{% from 'partials/icons.html' import icon with context %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  {# The CSRF token is per session and is what makes a state-changing fetch legitimate. #}
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <meta name="actor-role" content="{{ current_actor.role if current_actor else '' }}">
+  <title>{{ page_title }} · GreenRoute</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">
+  {% block head_extra %}{% endblock %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/evolution.css') }}">
+</head>
+<body data-page="{{ current_nav or 'other' }}">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+
+  <div class="app-shell">
+    {% include 'partials/sidebar.html' %}
+
+    <div class="app-main">
+      <div class="mobile-bar">
+        <button class="icon-btn" type="button" data-sidebar-open aria-label="Open navigation" aria-controls="app-sidebar" aria-expanded="false">
+          {{ icon('dashboard', 16) }}
+        </button>
+        <a class="mobile-brand" href="{{ url_for('dashboard') }}">
+          <span class="brand-mark brand-mark--sm">{{ icon('route', 14) }}</span>
+          <strong>GreenRoute</strong>
+        </a>
+        <div class="mobile-bar-actions">
+          <span class="mobile-date mono">{{ today_label }}</span>
+          <a class="icon-btn" href="{{ url_for('create_response') }}" aria-label="Create emergency response">{{ icon('plus', 17) }}</a>
+        </div>
+      </div>
+
+      <header class="page-header">
+        <div class="page-heading">
+          <div class="page-title-row">
+            <h1>{{ page_title }}</h1>
+            {% block page_badge %}{% endblock %}
+          </div>
+          <p class="page-sub">{{ page_subtitle }}</p>
+        </div>
+        <div class="page-actions">
+          {% block header_actions %}{% endblock %}
+        </div>
+      </header>
+
+      {% block toolbar %}{% endblock %}
+
+      <main class="page-body{% block body_class %}{% endblock %}" id="main-content">
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+
+  {% block modals %}{% endblock %}
+
+  <div class="toast-stack" id="toast-stack" aria-live="polite" aria-atomic="false"></div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <script>window.__GR_FLASH = {{ messages|tojson }};</script>
+  {% endif %}
+  {% endwith %}
+
+  <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,37 @@
+name: Feature request
+description: Propose a capability, an improvement or a documentation fix
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This project has a defined scope. Proximity alerts, ordinary-driver
+        discovery, push notifications and traffic-signal control are not implemented
+        and are not currently authorized, so proposals for them will be treated as
+        discussion rather than work items.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What is hard or impossible today, for whom.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: What you would change, and where in the system it belongs.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      options:
+        - label: This does not require presenting a stale position as live, or a straight line as a road route.
+        - label: This does not require new third-party credentials for the default test path.

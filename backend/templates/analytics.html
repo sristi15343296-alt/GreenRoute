@@ -1,0 +1,202 @@
+{% extends 'base.html' %}
+{% from 'partials/icons.html' import icon with context %}
+{% from 'partials/macros.html' import empty_state, summary_metric %}
+
+{% block header_actions %}
+<div class="header-meta">
+  <span class="header-meta-label">Computed</span>
+  <span class="mono">{{ data.generated_at|localdt('%d %b · %H:%M') }} {{ timezone_label }}</span>
+</div>
+<span class="header-divider" aria-hidden="true"></span>
+<div class="menu-host">
+  <button class="btn btn-secondary" type="button" data-menu-toggle="analytics-export-menu" aria-expanded="false">
+    {{ icon('download', 15) }}<span>Export</span>{{ icon('chevron-down', 13) }}
+  </button>
+  <div class="menu menu--float" id="analytics-export-menu" role="menu">
+    <div class="menu-label">Current selection</div>
+    <a class="menu-item" role="menuitem" href="{{ url_for('export_analytics', range=range_key, status=status) }}">{{ icon('download', 14) }} Daily series (CSV)</a>
+    <a class="menu-item" role="menuitem" href="{{ url_for('export_analytics_json', range=range_key, status=status) }}">{{ icon('database', 14) }} Summary payload (JSON)</a>
+    <div class="menu-sep"></div>
+    <a class="menu-item" role="menuitem" href="{{ url_for('export_trips') }}">{{ icon('trips', 14) }} Full trips register (CSV)</a>
+  </div>
+</div>
+<button class="btn btn-secondary" type="button" data-refresh title="Recompute from recorded trips">{{ icon('refresh', 15) }}<span>Refresh</span></button>
+{% endblock %}
+
+{% block toolbar %}
+<div class="control-bar">
+  <div class="control-group">
+    <div class="segmented" role="group" aria-label="Date range">
+      <a class="segment{% if range_key == '7' %} is-active{% endif %}" href="{{ url_for('analytics', range='7', status=status) }}">7d</a>
+      <a class="segment{% if range_key == '30' %} is-active{% endif %}" href="{{ url_for('analytics', range='30', status=status) }}">30d</a>
+      <a class="segment{% if range_key == '90' %} is-active{% endif %}" href="{{ url_for('analytics', range='90', status=status) }}">90d</a>
+      <a class="segment{% if range_key == 'all' %} is-active{% endif %}" href="{{ url_for('analytics', range='all', status=status) }}">All</a>
+    </div>
+    <span class="range-label mono">{{ data.start_date }} → {{ data.end_date }}</span>
+    <span class="control-divider" aria-hidden="true"></span>
+    <form class="control-form" method="get" action="{{ url_for('analytics') }}">
+      <input type="hidden" name="range" value="{{ range_key }}">
+      <label class="sr-only" for="analytics-status">Filter by status</label>
+      <select class="select select--compact" id="analytics-status" name="status" data-auto-submit>
+        <option value="all"{% if status == 'all' %} selected{% endif %}>All statuses</option>
+        {% for key in status_order %}
+        <option value="{{ key }}"{% if status == key %} selected{% endif %}>{{ status_meta[key].label }}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+
+  <div class="control-group control-group--right">
+    <span class="active-filter-label">Active</span>
+    <span class="filter-chip">{{ data.range_label }}</span>
+    <span class="filter-chip">Status: {{ 'All' if status == 'all' else status_meta[status].label }}</span>
+    {% if range_key != '30' or status != 'all' %}
+    <a class="reset-link" href="{{ url_for('analytics', range='30', status='all') }}">{{ icon('refresh', 13) }} Reset</a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="page-container">
+  <section class="metric-strip metric-strip--six" aria-label="Performance summary">
+    {{ summary_metric('Total trips', data.summary.total|number, note=data.range_label, delta=data.change.trips, icon_name='hash') }}
+    {{ summary_metric('Completed', data.summary.completed|number, note=data.summary.counts.cancelled|number ~ ' cancelled', delta=data.change.completed, icon_name='check-circle') }}
+    {{ summary_metric('Completion rate', data.summary.completion_rate|pct, note='Of trips recorded in range', icon_name='gauge') }}
+    {{ summary_metric('Distance logged', data.summary.distance_km|distance_number, unit=distance_unit, note='Across ' ~ data.summary.routed_trips|number ~ ' routed trips', delta=data.change.distance, icon_name='navigation') }}
+    {{ summary_metric('Avg distance', data.summary.avg_distance_km|distance_number, unit=distance_unit, note='Per routed trip', icon_name='route') }}
+    {{ summary_metric('Avg est. duration', data.summary.avg_duration_min|duration if data.summary.avg_duration_min is not none else '—', note='Route estimate per trip', icon_name='clock') }}
+  </section>
+
+  <section class="panel chart-panel" aria-labelledby="trend-heading">
+    <div class="panel-head">
+      <div>
+        <span class="section-kicker">Performance window</span>
+        <h2 id="trend-heading">Trip volume &amp; distance</h2>
+        <p>Daily aggregates from recorded trips. Choose the measure to display.</p>
+      </div>
+      <div class="chart-controls">
+        <div class="segmented segmented--sm" role="group" aria-label="Chart measure">
+          <button class="segment is-active" type="button" data-chart-mode="combined" aria-pressed="true">Combined</button>
+          <button class="segment" type="button" data-chart-mode="trips" aria-pressed="false">Trips</button>
+          <button class="segment" type="button" data-chart-mode="distance" aria-pressed="false">Distance</button>
+        </div>
+      </div>
+    </div>
+
+    {% if data.summary.total %}
+    <div class="chart-frame">
+      <canvas id="analytics-chart" data-unit="{{ distance_unit }}" role="img" aria-label="Daily trip volume and distance chart"></canvas>
+    </div>
+    <div class="chart-foot">
+      <div class="chart-legend">
+        <span><i class="legend-swatch legend-swatch--trips"></i>Trips recorded</span>
+        <span><i class="legend-swatch legend-swatch--distance"></i>Distance ({{ distance_unit }})</span>
+      </div>
+      <span class="mono">Daily · {{ data.series|length }} intervals</span>
+    </div>
+    {% else %}
+    {{ empty_state('analytics', 'No data in this period', 'Analytics are calculated from recorded responses. Create a response or widen the date range to see performance data.', 'New response', action_href=url_for('create_response')) }}
+    {% endif %}
+  </section>
+
+  <div class="analytics-grid">
+    <section class="panel" aria-labelledby="status-dist-heading">
+      <div class="panel-head panel-head--tight">
+        <div>
+          <span class="section-kicker">Composition</span>
+          <h2 id="status-dist-heading">Status distribution</h2>
+          <p>Share of records in the selected period.</p>
+        </div>
+        <span class="panel-tag mono">{{ data.summary.total }} total</span>
+      </div>
+
+      {% if data.summary.total %}
+      <div class="distribution-bar" aria-hidden="true">
+        {% for item in data.status_breakdown if item.count %}
+        <span class="distribution-seg distribution-seg--{{ item.key }}" style="width: {{ item.percent }}%"></span>
+        {% endfor %}
+      </div>
+      <ul class="distribution-list">
+        {% for item in data.status_breakdown %}
+        <li>
+          <span class="distribution-label"><i class="status-dot status-dot--{{ item.key }}"></i>{{ item.label }}</span>
+          <span class="distribution-values"><b class="mono">{{ item.count }}</b><em class="mono">{{ item.percent|pct }}</em></span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="muted-note">No status data in this period.</p>
+      {% endif %}
+    </section>
+
+    <section class="panel" aria-labelledby="priority-mix-heading">
+      <div class="panel-head panel-head--tight">
+        <div>
+          <span class="section-kicker">Triage profile</span>
+          <h2 id="priority-mix-heading">Priority mix</h2>
+          <p>How recorded trips were prioritised.</p>
+        </div>
+      </div>
+
+      {% if data.summary.total %}
+      <ul class="mix-list">
+        {% for item in data.priority_breakdown %}
+        <li>
+          <div class="mix-head">
+            <span>{{ item.label }}</span>
+            <span class="mono">{{ item.count }} · {{ item.percent|pct }}</span>
+          </div>
+          <div class="mix-track"><span class="mix-fill mix-fill--{{ item.key }}" style="width: {{ item.percent }}%"></span></div>
+        </li>
+        {% endfor %}
+      </ul>
+      <div class="panel-foot">{{ icon('info', 13) }} Priorities reflect the value recorded at trip creation.</div>
+      {% else %}
+      <p class="muted-note">No priority data in this period.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <section class="panel table-panel" aria-labelledby="daily-heading">
+    <div class="panel-head">
+      <div>
+        <span class="section-kicker">Audit trail</span>
+        <h2 id="daily-heading">Daily register</h2>
+        <p>Recorded volume for each day in the selected range.</p>
+      </div>
+      <a class="panel-link" href="{{ url_for('export_analytics', range=range_key, status=status) }}">{{ icon('download', 13) }} Export CSV</a>
+    </div>
+
+    <div class="table-wrap table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col" class="num">Trips</th>
+            <th scope="col" class="num">Completed</th>
+            <th scope="col" class="num">Distance</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for day in data.series|reverse %}
+          <tr>
+            <td class="mono">{{ day.date }}</td>
+            <td class="num mono">{{ day.trips }}</td>
+            <td class="num mono">{{ day.completed }}</td>
+            <td class="num mono">{{ day.distance|distance_number }} <span class="muted">{{ distance_unit }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="panel-foot">{{ icon('info', 13) }} No telematics, fuel or emissions data is recorded, so none is reported.</div>
+  </section>
+</div>
+<script type="application/json" id="analytics-data">{{ data|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+<script src="{{ url_for('static', filename='js/analytics.js') }}" defer></script>
+{% endblock %}

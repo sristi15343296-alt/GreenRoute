@@ -1,0 +1,142 @@
+{% extends 'base.html' %}
+{% from 'partials/icons.html' import icon with context %}
+{% block page_badge %}<span class="reference-pill">{{ admins|length }} accounts</span>{% endblock %}
+
+{% block content %}
+<div class="panel" style="margin-bottom:18px">
+  <div class="panel-head">
+    <div>
+      <h2 style="margin:0;font-size:15px">Create administrator</h2>
+      <p class="form-hint" style="margin-top:4px">Passwords are hashed with scrypt and never shown again.</p>
+    </div>
+  </div>
+  <form method="post" action="{{ url_for('admin_users.create_administrator') }}" class="form-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="field">
+      <span class="field-label">E-mail</span>
+      <input class="input" type="email" name="email" required autocomplete="off" spellcheck="false">
+    </label>
+    <label class="field">
+      <span class="field-label">Name</span>
+      <input class="input" type="text" name="name" autocomplete="off" maxlength="120">
+    </label>
+    <label class="field">
+      <span class="field-label">Role</span>
+      <select class="input" name="role">
+        {% for role, label, _permissions in roles %}
+        <option value="{{ role }}"{% if role == 'EMERGENCY_OPERATOR' %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-label">Password</span>
+      <input class="input" type="password" name="password" required minlength="{{ min_password_length }}" autocomplete="new-password">
+      <span class="field-hint">At least {{ min_password_length }} characters.</span>
+    </label>
+    <label class="field">
+      <span class="field-label">Repeat password</span>
+      <input class="input" type="password" name="password_confirm" required autocomplete="new-password">
+    </label>
+    <div class="field" style="align-self:end">
+      <button class="btn btn-primary btn-block" type="submit">Create account</button>
+    </div>
+  </form>
+</div>
+
+<div class="panel table-panel" style="margin-bottom:18px">
+  <div class="panel-head">
+    <div>
+      <h2 style="margin:0;font-size:15px">Accounts</h2>
+      <p class="form-hint" style="margin-top:4px">Roles are stored server-side; changing one takes effect on the next request.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Account</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th>Sessions</th>
+          <th>Last sign-in</th>
+          <th>Password</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for admin in admins %}
+        <tr>
+          <td>
+            <strong>{{ admin.name or admin.email }}</strong>
+            <div class="form-hint">{{ admin.email }}{% if admin.id == actor.id %} · you{% endif %}</div>
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('admin_users.change_role', admin_id=admin.id) }}" style="display:flex;gap:6px">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <select class="input" name="role"{% if admin.id == actor.id %} disabled{% endif %} aria-label="Role for {{ admin.email }}">
+                {% for role, label, _permissions in roles %}
+                <option value="{{ role }}"{% if role == admin.role %} selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+              {% if admin.id != actor.id %}
+              <button class="btn btn-secondary btn-sm" type="submit">Save</button>
+              {% endif %}
+            </form>
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('admin_users.change_status', admin_id=admin.id) }}" style="display:flex;gap:6px">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="status" value="{{ 'suspended' if admin.status == 'active' else 'active' }}">
+              {% if admin.id == actor.id %}
+              <span class="form-hint">{{ statuses[admin.status] }}</span>
+              {% else %}
+              <button class="btn btn-{{ 'danger' if admin.status == 'active' else 'secondary' }} btn-sm" type="submit">
+                {{ 'Suspend' if admin.status == 'active' else 'Reactivate' }}
+              </button>
+              {% endif %}
+            </form>
+          </td>
+          <td class="mono">{{ admin.sessions }}</td>
+          <td class="mono">{{ admin.last_login_at|localdt if admin.last_login_at else '—' }}</td>
+          <td>
+            <details>
+              <summary class="form-hint" style="cursor:pointer">Set new password</summary>
+              <form method="post" action="{{ url_for('admin_users.reset_password', admin_id=admin.id) }}" style="display:flex;gap:6px;margin-top:8px">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input class="input" type="password" name="password" required minlength="{{ min_password_length }}" placeholder="New password" autocomplete="new-password" style="min-width:150px">
+                <input class="input" type="password" name="password_confirm" required placeholder="Repeat" autocomplete="new-password" style="min-width:110px">
+                <button class="btn btn-secondary btn-sm" type="submit">Apply</button>
+              </form>
+              <p class="form-hint">Signs that account out everywhere.</p>
+            </details>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head">
+    <div>
+      <h2 style="margin:0;font-size:15px">Role permissions</h2>
+      <p class="form-hint" style="margin-top:4px">Enforced on every request by the backend; the UI only hides what would fail.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>Role</th><th>May do</th></tr>
+      </thead>
+      <tbody>
+        {% for role, label, permissions in roles %}
+        <tr>
+          <td><strong>{{ label }}</strong><div class="form-hint mono">{{ role }}</div></td>
+          <td class="mono" style="font-size:11.5px;line-height:1.7">{{ permissions|join(' · ') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

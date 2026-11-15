@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% from 'partials/icons.html' import icon with context %}
+
+{% block header_actions %}
+<a class="btn btn-secondary" href="{{ url_for('resources') }}">{{ icon('arrow-left', 15) }} Resources</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-container">
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <span class="panel-kicker">{{ 'Rotated' if rotated else 'Issued' }} unit code</span>
+        <h2>{{ vehicle.call_sign }}</h2>
+      </div>
+      <span class="panel-tag">shown once</span>
+    </div>
+
+    <p class="registry-sub">
+      Give this code to the crew for {{ vehicle.call_sign }}. It is displayed on this
+      response only: the server stores a digest, so it cannot be shown again. Issuing
+      another code later replaces this one immediately.
+    </p>
+
+    <p class="unit-code mono">{{ token }}</p>
+
+    <p class="registry-sub">
+      {% if rotated %}
+      The previous code for this unit no longer authenticates.
+      {% endif %}
+      Paste it into the crew app's sign-in field in place of a call sign.
+    </p>
+
+    <div class="error-actions">
+      <a class="btn btn-primary" href="{{ url_for('resources') }}">Back to resources</a>
+    </div>
+  </section>
+</div>
+{% endblock %}

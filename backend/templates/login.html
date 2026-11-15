@@ -1,0 +1,91 @@
+{% from 'partials/icons.html' import icon with context %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Sign in · {{ workspace_name }} · GreenRoute</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">
+  <style>
+    .login-shell {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 32px 20px;
+      background:
+        radial-gradient(1100px 520px at 18% -10%, rgba(201, 249, 76, 0.10), transparent 60%),
+        var(--bg-canvas);
+    }
+    .login-card { width: 100%; max-width: 420px; }
+    .login-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+    .login-brand strong { font-size: 17px; letter-spacing: -0.01em; }
+    .login-brand span.brand-mark {
+      width: 34px; height: 34px; border-radius: var(--r-sm);
+      display: grid; place-items: center;
+      background: var(--accent-dim); color: var(--accent);
+      border: 1px solid var(--rim);
+    }
+    .login-foot { margin-top: 16px; font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
+    .login-error {
+      margin-bottom: 16px; padding: 10px 12px; border-radius: var(--r-sm);
+      border: 1px solid rgba(229, 103, 79, 0.45);
+      background: rgba(229, 103, 79, 0.10);
+      color: #ffd9d2; font-size: 13px;
+    }
+    .login-card .form-grid { gap: 14px; }
+  </style>
+</head>
+<body>
+  <main class="login-shell">
+    <div class="login-card">
+      <div class="login-brand">
+        <span class="brand-mark">{{ icon('route', 17) }}</span>
+        <div>
+          <strong>GreenRoute</strong>
+          <div class="login-foot" style="margin-top:2px">{{ workspace_name }}</div>
+        </div>
+      </div>
+
+      <form class="panel" method="post" action="{{ url_for('admin_auth.login') }}" novalidate>
+        <div class="panel-head">
+          <div>
+            <h2 style="margin:0;font-size:16px">Sign in</h2>
+            <p class="form-hint" style="margin-top:4px">Administrative access is limited to registered accounts.</p>
+          </div>
+        </div>
+
+        {% if error %}
+        <div class="login-error" role="alert">{{ error }}</div>
+        {% endif %}
+
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        {% if next_target %}<input type="hidden" name="next" value="{{ next_target }}">{% endif %}
+
+        <div class="form-grid">
+          <label class="field">
+            <span class="field-label">E-mail</span>
+            <input class="input" type="email" name="email" value="{{ email }}" autocomplete="username"
+                   autofocus required spellcheck="false">
+          </label>
+          <label class="field">
+            <span class="field-label">Password</span>
+            <input class="input" type="password" name="password" autocomplete="current-password" required>
+          </label>
+          <button class="btn btn-primary btn-block" type="submit">Sign in</button>
+        </div>
+
+        <p class="login-foot">
+          Sessions end after 8 hours, or after 45 minutes of inactivity.
+          Five failed attempts pause sign-in for 15 minutes.
+        </p>
+      </form>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,12 +1,59 @@
-﻿.venv/
-venv/
+# --- Python / backend -------------------------------------------------------
 __pycache__/
 *.py[cod]
-.env
-.env.*
-!.env.example
-instance/
+*.pyd
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Runtime state: database, password hashes, sessions, audit history, positions,
+# bootstrap password, backups. None of this belongs in a repository.
+backend/instance/
 *.sqlite
 *.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.db
+backend/.run/
+
+# --- Local configuration ----------------------------------------------------
+.env
+.env.*
+*.env
+.env.bak*
+!.env.example
+*.pem
+*.key
+
+# --- Expo / React Native ----------------------------------------------------
+driver-app/node_modules/
+driver-app/.expo/
+driver-app/dist/
+driver-app/web-build/
+driver-app/android/
+driver-app/ios/
+npm-debug.log*
+yarn-error.log*
+*.log
+metro*.log
+
+# --- Local-only material ----------------------------------------------------
+driver-app/design/
+docs/internal/
+.freebuff/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Operating systems ------------------------------------------------------
 .DS_Store
 Thumbs.db
+desktop.ini
